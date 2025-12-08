@@ -28,7 +28,7 @@ local QUEST_CONFIG = {
     -- Priority 1: Auto Sell (Ores)
     AUTO_SELL_ENABLED = true,
     AUTO_SELL_INTERVAL = 10,
-    AUTO_SELL_NPC_NAME = "Greedy Cey",  -- Sell ores (Wu is for weapons/armor)
+    AUTO_SELL_NPC_NAME = "Greedy Cey",
 
     -- Priority 2: Auto Buy Cobalt Pickaxe (Background)
     AUTO_BUY_ENABLED = true,
@@ -114,16 +114,16 @@ local QUEST_CONFIG = {
         REQUIRED_ORES = {
             Diamond = 10,
             Quartz = 10,
-            Boneite = 10,
+            Amethyst = 10,
         },
 
         -- These ores will NOT be sold by Auto Sell
-        PROTECTED_ORES = {"Diamond", "Quartz", "Boneite"},
+        PROTECTED_ORES = {"Diamond", "Quartz", "Amethyst"},
 
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
         FORGE_TYPE = "Weapon",
-        SELL_SHOP_POSITION = Vector3.new(-113.93, 22.3, -94.7), -- Sell items before forge
+        SELL_SHOP_POSITION = Vector3.new(-115.1, 22.3, -92.3), -- Sell items before forge
 
         -- Rare weapon detection (ImageColor3)
         RARE_WEAPON_COLOR = Color3.fromRGB(123, 189, 246),
@@ -245,8 +245,6 @@ local MINING_FOLDER_PATH = Workspace:WaitForChild("Rocks")
 
 if PORTAL_RF then print("✅ Portal Remote Ready!") else warn("⚠️ Portal Remote not found") end
 if PlayerController then print("✅ PlayerController Ready!") else warn("⚠️ PlayerController not found") end
-if ProximityService then print("✅ ProximityService Ready!") else warn("⚠️ ProximityService not found") end
-if DialogueService then print("✅ DialogueService Ready!") else warn("⚠️ DialogueService not found") end
 if ToolController then print("✅ ToolController Ready!") else warn("⚠️ ToolController not found") end
 if DIALOGUE_RF then print("✅ Dialogue Remote Ready!") else warn("⚠️ Dialogue Remote not found") end
 if PURCHASE_RF then print("✅ Purchase Remote Ready!") else warn("⚠️ Purchase Remote not found") end
@@ -597,13 +595,13 @@ local function smoothMoveTo(targetPos, callback)
         print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
     end
 
-    -- Stage 1: Move Y axis first
-    local yReached = false
-    local xzReached = false
-    local currentStage = "Y" -- Start with Y movement
+    local reachedTarget = false
+    local phase = 1 -- Phase 1: Move Y first, Phase 2: Move X/Z
+    local Y_TOLERANCE = 2
+    local XZ_TOLERANCE = QUEST_CONFIG.STOP_DISTANCE or 2
 
     State.moveConn = RunService.Heartbeat:Connect(function()
-        if yReached and xzReached then return end
+        if reachedTarget then return end
 
         -- Check if character or BodyVelocity is destroyed
         if not char or not char.Parent or not hrp or not hrp.Parent then
@@ -618,8 +616,6 @@ local function smoothMoveTo(targetPos, callback)
         -- Check if BodyVelocity was destroyed by game/other script
         if not bv or not bv.Parent then
             warn("   ⚠️ BodyVelocity destroyed! Recreating...")
-
-            -- Recreate BodyVelocity
             bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             bv.Parent = hrp
@@ -636,41 +632,33 @@ local function smoothMoveTo(targetPos, callback)
         end
 
         local currentPos = hrp.Position
+        local yDiff = math.abs(targetPos.Y - currentPos.Y)
+        local xzDiff = math.sqrt((targetPos.X - currentPos.X)^2 + (targetPos.Z - currentPos.Z)^2)
 
-        -- Stage 1: Move Y (vertical) first
-        if not yReached then
-            local yDiff = targetPos.Y - currentPos.Y
-            local yDistance = math.abs(yDiff)
-
-            if yDistance < QUEST_CONFIG.STOP_DISTANCE then
-                yReached = true
-                currentStage = "XZ"
+        -- Phase 1: Move Y axis first
+        if phase == 1 then
+            if yDiff < Y_TOLERANCE then
+                phase = 2
                 if DEBUG_MODE then
-                    print("   ✅ Y axis reached! Now moving XZ...")
+                    print("   📍 Y reached, moving X/Z...")
                 end
             else
-                -- Move only Y axis
-                local yDirection = yDiff > 0 and 1 or -1
-                local ySpeed = math.min(QUEST_CONFIG.MOVE_SPEED, yDistance * 10)
-                local velocity = Vector3.new(0, yDirection * ySpeed, 0)
-
-                bv.Velocity = velocity
-                bg.CFrame = CFrame.lookAt(currentPos, currentPos + Vector3.new(0, yDirection, 0))
+                local yDirection = Vector3.new(0, targetPos.Y - currentPos.Y, 0)
+                local speed = math.min(QUEST_CONFIG.MOVE_SPEED, yDiff * 10)
+                bv.Velocity = yDirection.Unit * speed
+                bg.CFrame = CFrame.lookAt(currentPos, currentPos + Vector3.new(0, 0, 1))
+                return
             end
-        
-        -- Stage 2: Move XZ (horizontal) after Y is done
-        elseif not xzReached then
-            -- Keep current Y, only move XZ
-            local targetXZ = Vector3.new(targetPos.X, currentPos.Y, targetPos.Z)
-            local directionXZ = (targetXZ - currentPos)
-            local distanceXZ = directionXZ.Magnitude
+        end
 
-            if distanceXZ < QUEST_CONFIG.STOP_DISTANCE then
+        -- Phase 2: Move X and Z axes
+        if phase == 2 then
+            if xzDiff < XZ_TOLERANCE then
                 if DEBUG_MODE then
-                    print(string.format("   ✅ Reached! (%.1f)", distanceXZ))
+                    print(string.format("   ✅ Reached! (Y: %.1f, XZ: %.1f)", yDiff, xzDiff))
                 end
 
-                xzReached = true
+                reachedTarget = true
 
                 bv.Velocity = Vector3.zero
                 hrp.Velocity = Vector3.zero
@@ -688,11 +676,10 @@ local function smoothMoveTo(targetPos, callback)
                 if callback then callback() end
                 return
             else
-                local speedXZ = math.min(QUEST_CONFIG.MOVE_SPEED, distanceXZ * 10)
-                local velocityXZ = directionXZ.Unit * speedXZ
-
-                bv.Velocity = velocityXZ
-                bg.CFrame = CFrame.lookAt(currentPos, targetXZ)
+                local xzDirection = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
+                local speed = math.min(QUEST_CONFIG.MOVE_SPEED, xzDiff * 10)
+                bv.Velocity = xzDirection.Unit * speed
+                bg.CFrame = CFrame.lookAt(currentPos, currentPos + xzDirection)
             end
         end
     end)
@@ -1157,7 +1144,7 @@ local function getProximityNPC(name)
     return proximity:FindFirstChild(name)
 end
 
--- Sell all non-equipped weapons and armor
+-- Sell all non-equipped weapons and armor (Quest04 style with NPC Wu)
 local function sellAllNonEquippedItems()
     print("\n💰 Selling all non-equipped Weapons/Armor...")
 
@@ -1177,76 +1164,49 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
 
-    -- Sell Weapons & Armor to Wu (Cobalt Mode)
-    local npcName = "Wu"  -- Must use Wu for weapon/armor selling
-    local npc = getProximityNPC(npcName)
-    
+    -- Get NPC Wu for selling weapons
+    local proximity = Workspace:FindFirstChild("Proximity")
+    local npc = proximity and proximity:FindFirstChild("Wu")
+
     if not npc then
-        warn("   ❌ NPC Wu not found in Workspace!")
+        warn("   ❌ NPC Wu not found!")
         return false
     end
-    
-    -- Get NPC position
-    local npcHRP = npc:FindFirstChild("HumanoidRootPart")
-    if not npcHRP then
-        warn("   ❌ NPC Wu has no HumanoidRootPart!")
-        return false
-    end
-    
-    local npcPos = npcHRP.Position
-    
-    -- Move to NPC Wu (like Quest4 does with Marbles)
-    print(string.format("   🚶 Moving to NPC %s at (%.1f, %.1f, %.1f)...", npcName, npcPos.X, npcPos.Y, npcPos.Z))
-    
-    local done = false
-    Shared.smoothMoveTo(npcPos, 2, 25, function()
-        done = true
-    end)
-    
-    local t0 = tick()
-    while not done and tick() - t0 < 30 do
-        task.wait(0.1)
-    end
-    
-    if not done then
-        warn("   ❌ Failed to reach NPC Wu!")
-        return false
-    end
-    
-    print(string.format("   ✅ Reached NPC %s!", npcName))
-    task.wait(1)
-    
+
     if not ProximityService or not DialogueService then
         warn("   ❌ ProximityService or DialogueService not available!")
         return false
     end
-    
-    -- 1. Open Dialogue with NPC using ForceDialogue
-    print("   🔌 Opening dialogue...")
+
+    -- 1. Open dialogue with NPC Wu using ForceDialogue
+    print("   � Opening dialogue with Wu...")
     local success1 = pcall(function()
         ProximityService:ForceDialogue(npc, "SellConfirm")
     end)
-    
+
     if not success1 then
         warn("   ❌ Failed to open dialogue")
         return false
     end
-    
+
     task.wait(0.2)
-    
-    -- 2. Sell using DialogueService RunCommand
+
+    -- 2. Sell using DialogueService
     print("   💸 Selling items...")
     local success2 = pcall(function()
         DialogueService:RunCommand("SellConfirm", { Basket = basket })
     end)
-    
+
+    task.wait(0.1)
+
+    -- 3. Restore state
+    ForceEndDialogueAndRestore()
+
     if success2 then
         print("   ✅ Sold all items successfully!")
-        task.wait(0.1)
-        ForceEndDialogueAndRestore()
         return true
     else
-        warn("   ❌ Sell failed")
+        warn("   ⚠️ Sell may have failed")
         ForceEndDialogueAndRestore()
         return false
     end
@@ -1534,23 +1494,44 @@ local function setupForgeHook()
         return
     end
 
-    print("🔧 Installing Forge Hook...")
+    print("🔧 Installing Forge Hook (Auto Progression)...")
 
     local originalChangeSequence = ForgeService.ChangeSequence
 
     ForgeService.ChangeSequence = function(self, sequenceName, args)
         print(string.format("   🔄 Forge Sequence: %s", sequenceName or "nil"))
 
-        local result = originalChangeSequence(self, sequenceName, args)
+        local success, result = pcall(originalChangeSequence, self, sequenceName, args)
 
+        -- Auto progression through forge phases (Quest03 style)
         task.spawn(function()
-            if sequenceName == "Complete" or sequenceName == "Finish" then
+            if sequenceName == "Melt" then
+                print("      ⏩ Auto: Pouring in 8s...")
+                task.wait(8)
+                self:ChangeSequence("Pour", {ClientTime = 8.5, InContact = true})
+
+            elseif sequenceName == "Pour" then
+                print("      ⏩ Auto: Hammering in 5s...")
+                task.wait(5)
+                self:ChangeSequence("Hammer", {ClientTime = 5.2})
+
+            elseif sequenceName == "Hammer" then
+                print("      ⏩ Auto: Watering in 6s...")
+                task.wait(6)
+                self:ChangeSequence("Water", {ClientTime = 6.5})
+
+            elseif sequenceName == "Water" then
+                print("      ⏩ Auto: Showcasing in 3s...")
+                task.wait(3)
+                self:ChangeSequence("Showcase", {})
+
+            elseif sequenceName == "Showcase" then
                 State.forgeComplete = true
                 print("   ✅ Forge completed!")
             end
         end)
 
-        return result
+        return success, result
     end
 
     getgenv().ForgeHookActive = true
@@ -1646,15 +1627,15 @@ local function startForge(oreSelection)
     print("   🔥 Starting Melt Sequence...")
     local success = pcall(function()
         ForgeService:ChangeSequence("Melt", {
+            Object = FORGE_OBJECT,
             Ores = oreSelection,
-            ItemType = "Weapon",
+            ItemType = "Weapon", -- Explicitly set to Weapon
             FastForge = false
         })
     end)
 
     if success then
         print("✅ Forge Melt started!")
-        -- Don't close UI - let the forge hook handle the sequence
         return true
     else
         warn("❌ Forge Melt failed!")
