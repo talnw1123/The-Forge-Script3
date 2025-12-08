@@ -136,10 +136,12 @@ function Shared.smoothMoveTo(targetPos, stopDistance, moveSpeed, callback)
     
     print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
     
-    local reachedTarget = false
+    -- Stage 1: Move Y axis first
+    local yReached = false
+    local xzReached = false
     
     State.moveConn = Services.RunService.Heartbeat:Connect(function()
-        if reachedTarget then return end
+        if yReached and xzReached then return end
         
         if not char or not char.Parent or not hrp or not hrp.Parent then
             if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
@@ -151,36 +153,60 @@ function Shared.smoothMoveTo(targetPos, stopDistance, moveSpeed, callback)
         end
         
         local currentPos = hrp.Position
-        local direction = (targetPos - currentPos)
-        local distance = direction.Magnitude
         
-        if distance < stopDistance then
-            print(string.format("   ✅ Reached target! (%.1f studs)", distance))
+        -- Stage 1: Move Y (vertical) first
+        if not yReached then
+            local yDiff = targetPos.Y - currentPos.Y
+            local yDistance = math.abs(yDiff)
             
-            reachedTarget = true
+            if yDistance < stopDistance then
+                yReached = true
+                print("   ✅ Y axis reached! Now moving XZ...")
+            else
+                -- Move only Y axis
+                local yDirection = yDiff > 0 and 1 or -1
+                local ySpeed = math.min(moveSpeed, yDistance * 10)
+                local velocity = Vector3.new(0, yDirection * ySpeed, 0)
+                
+                bv.Velocity = velocity
+                bg.CFrame = CFrame.lookAt(currentPos, currentPos + Vector3.new(0, yDirection, 0))
+            end
+        
+        -- Stage 2: Move XZ (horizontal) after Y is done
+        elseif not xzReached then
+            -- Keep current Y, only move XZ
+            local targetXZ = Vector3.new(targetPos.X, currentPos.Y, targetPos.Z)
+            local directionXZ = (targetXZ - currentPos)
+            local distanceXZ = directionXZ.Magnitude
             
-            bv.Velocity = Vector3.zero
-            hrp.Velocity = Vector3.zero
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            
-            task.wait(0.1)
-            
-            if bv and bv.Parent then bv:Destroy() end
-            if bg and bg.Parent then bg:Destroy() end
-            State.bodyVelocity = nil
-            State.bodyGyro = nil
-            
-            if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
-            
-            if callback then callback() end
-            return
+            if distanceXZ < stopDistance then
+                print(string.format("   ✅ Reached target! (%.1f studs)", distanceXZ))
+                
+                xzReached = true
+                
+                bv.Velocity = Vector3.zero
+                hrp.Velocity = Vector3.zero
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                
+                task.wait(0.1)
+                
+                if bv and bv.Parent then bv:Destroy() end
+                if bg and bg.Parent then bg:Destroy() end
+                State.bodyVelocity = nil
+                State.bodyGyro = nil
+                
+                if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+                
+                if callback then callback() end
+                return
+            else
+                local speedXZ = math.min(moveSpeed, distanceXZ * 10)
+                local velocityXZ = directionXZ.Unit * speedXZ
+                
+                bv.Velocity = velocityXZ
+                bg.CFrame = CFrame.lookAt(currentPos, targetXZ)
+            end
         end
-        
-        local speed = math.min(moveSpeed, distance * 10)
-        local velocity = direction.Unit * speed
-        
-        bv.Velocity = velocity
-        bg.CFrame = CFrame.lookAt(currentPos, targetPos)
     end)
     
     return true
