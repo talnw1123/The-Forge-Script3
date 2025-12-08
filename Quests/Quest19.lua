@@ -412,6 +412,54 @@ local function printOreStatus()
     return allComplete
 end
 
+----------------------------------------------------------------
+-- INVENTORY CHECK (MUST be before isOreProtected)
+----------------------------------------------------------------
+local function hasPickaxe(pickaxeName)
+    -- Check UI: PlayerGui.Menu.Frame.Frame.Menus.Tools.Frame
+    local menu = playerGui:FindFirstChild("Menu")
+    if not menu then
+        if DEBUG_MODE then
+            warn("[Q19] Menu not found → treat as NO pickaxe")
+        end
+        return false
+    end
+
+    local ok, toolsFrame = pcall(function()
+        local f1    = menu:FindFirstChild("Frame")
+        local f2    = f1 and f1:FindFirstChild("Frame")
+        local menus = f2 and f2:FindFirstChild("Menus")
+        local tools = menus and menus:FindFirstChild("Tools")
+        local frame = tools and tools:FindFirstChild("Frame")
+        return frame
+    end)
+
+    if not ok or not toolsFrame then
+        if DEBUG_MODE then
+            warn("[Q19] Tools.Frame not found → treat as NO pickaxe")
+        end
+        return false
+    end
+
+    -- Children in Frame are like "Iron Pickaxe", "Stone Pickaxe", "Cobalt Pickaxe"
+    local gui = toolsFrame:FindFirstChild(pickaxeName)
+    if gui then
+        if DEBUG_MODE then
+            local visible = gui:IsA("GuiObject") and gui.Visible or "N/A"
+            print(string.format("[Q19] ✅ UI pickaxe '%s' found (Visible=%s)", pickaxeName, tostring(visible)))
+        end
+        return true
+    end
+
+    if DEBUG_MODE then
+        print(string.format("[Q19] ⚠️ UI pickaxe '%s' NOT found", pickaxeName))
+    end
+    return false
+end
+
+----------------------------------------------------------------
+-- ORE PROTECTION CHECK (uses hasPickaxe)
+----------------------------------------------------------------
 local function isOreProtected(oreName)
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     if not config or not config.ENABLED then
@@ -429,51 +477,6 @@ local function isOreProtected(oreName)
         end
     end
     
-    return false
-end
-
-----------------------------------------------------------------
--- INVENTORY CHECK
-----------------------------------------------------------------
-local function hasPickaxe(pickaxeName)
-    -- Check UI: PlayerGui.Menu.Frame.Frame.Menus.Tools.Frame
-    local menu = playerGui:FindFirstChild("Menu")
-    if not menu then
-        if DEBUG_MODE then
-            warn("[Q18] Menu not found → treat as NO pickaxe")
-        end
-        return false
-    end
-
-    local ok, toolsFrame = pcall(function()
-        local f1    = menu:FindFirstChild("Frame")
-        local f2    = f1 and f1:FindFirstChild("Frame")
-        local menus = f2 and f2:FindFirstChild("Menus")
-        local tools = menus and menus:FindFirstChild("Tools")
-        local frame = tools and tools:FindFirstChild("Frame")
-        return frame
-    end)
-
-    if not ok or not toolsFrame then
-        if DEBUG_MODE then
-            warn("[Q18] Tools.Frame not found → treat as NO pickaxe")
-        end
-        return false
-    end
-
-    -- Children in Frame are like "Iron Pickaxe", "Stone Pickaxe", "Cobalt Pickaxe"
-    local gui = toolsFrame:FindFirstChild(pickaxeName)
-    if gui then
-        if DEBUG_MODE then
-            local visible = gui:IsA("GuiObject") and gui.Visible or "N/A"
-            print(string.format("[Q18] ✅ UI pickaxe '%s' found (Visible=%s)", pickaxeName, tostring(visible)))
-        end
-        return true
-    end
-
-    if DEBUG_MODE then
-        print(string.format("[Q18] ⚠️ UI pickaxe '%s' NOT found", pickaxeName))
-    end
     return false
 end
 
