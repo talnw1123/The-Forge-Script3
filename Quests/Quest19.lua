@@ -28,7 +28,7 @@ local QUEST_CONFIG = {
     -- Priority 1: Auto Sell (Ores)
     AUTO_SELL_ENABLED = true,
     AUTO_SELL_INTERVAL = 10,
-    AUTO_SELL_NPC_NAME = "Greedy Cey",
+    AUTO_SELL_NPC_NAME = "Greedy Cey",  -- Sell ores (Wu is for weapons/armor)
 
     -- Priority 2: Auto Buy Cobalt Pickaxe (Background)
     AUTO_BUY_ENABLED = true,
@@ -112,13 +112,13 @@ local QUEST_CONFIG = {
 
         -- Required ores to collect before forging
         REQUIRED_ORES = {
-            Diamond = 10,
+            Sapphire = 10,
             Quartz = 10,
             Amethyst = 10,
         },
 
         -- These ores will NOT be sold by Auto Sell
-        PROTECTED_ORES = {"Diamond", "Quartz", "Amethyst"},
+        PROTECTED_ORES = {"Sapphire", "Quartz", "Amethyst"},
 
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
@@ -1147,8 +1147,8 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
 
-    -- Sell using Services (Quest04 pattern)
-    local npcName = QUEST_CONFIG.AUTO_SELL_NPC_NAME or "Greedy Cey"
+    -- Sell Weapons & Armor to Wu (Cobalt Mode)
+    local npcName = "Wu"  -- Must use Wu for weapon/armor selling
     local npc = getProximityNPC(npcName)
     
     if not npc then
