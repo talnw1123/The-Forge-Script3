@@ -24,19 +24,19 @@ local DEBUG_MODE = true
 local QUEST_CONFIG = {
     QUEST_NAME = "Mining + Auto Sell & Buy",
     REQUIRED_LEVEL = 10,
-    
+
     -- Priority 1: Auto Sell (Ores)
     AUTO_SELL_ENABLED = true,
     AUTO_SELL_INTERVAL = 10,
     AUTO_SELL_NPC_NAME = "Greedy Cey",
-    
+
     -- Priority 2: Auto Buy Cobalt Pickaxe (Background)
     AUTO_BUY_ENABLED = true,
     AUTO_BUY_INTERVAL = 15,
     TARGET_PICKAXE = "Cobalt Pickaxe",
     MIN_GOLD_TO_BUY = 10000,
     SHOP_POSITION = Vector3.new(-165, 22, -111.7),
-    
+
     -- Priority 2.5: Auto Buy Magma Pickaxe (Gold >= 150k)
     MAGMA_PICKAXE_CONFIG = {
         ENABLED = false,  -- 🔴 DISABLED: User requested to turn off
@@ -54,14 +54,14 @@ local QUEST_CONFIG = {
         SHOP_POSITION = Vector3.new(-165, 22, -111.7),
         NPC_NAME = "Greedy Cey",
     },
-    
+
     -- Priority 3: Mining (Default: Basalt Rock)
     ROCK_NAME = "Basalt Rock",
     UNDERGROUND_OFFSET = 4,
     LAYING_ANGLE = 90,
     MOVE_SPEED = 50,  
     STOP_DISTANCE = 2,
-    
+
     MINING_PATHS = {
         "Island2CaveStart",
         "Island2CaveDanger1",
@@ -73,7 +73,7 @@ local QUEST_CONFIG = {
         "Island2CaveLavaClosed",
         "Island2CaveMid",
     },
-    
+
     -- Tier 2: Basalt Core (If have Cobalt Pickaxe)
     BASALT_CORE_CONFIG = {
         ROCK_NAME = "Basalt Core",
@@ -89,7 +89,7 @@ local QUEST_CONFIG = {
             "Island2CaveMid",
         },
     },
-    
+
     -- Tier 3: Basalt Vein (If have Magma Pickaxe)
     BASALT_VEIN_CONFIG = {
         ROCK_NAME = "Basalt Core",
@@ -105,30 +105,30 @@ local QUEST_CONFIG = {
             "Island2CaveMid",
         },
     },
-    
+
     -- Priority 2.6: Cobalt Mode (Ore Collection + Forge + Monster Kill)
     COBALT_MODE_CONFIG = {
         ENABLED = true,
-        
+
         -- Required ores to collect before forging
         REQUIRED_ORES = {
             Diamond = 10,
             Quartz = 10,
             Amethyst = 10,
         },
-        
+
         -- These ores will NOT be sold by Auto Sell
         PROTECTED_ORES = {"Diamond", "Quartz", "Amethyst"},
-        
+
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
         FORGE_TYPE = "Weapon",
         SELL_SHOP_POSITION = Vector3.new(-115.1, 22.3, -92.3), -- Sell items before forge
-        
+
         -- Rare weapon detection (ImageColor3)
         RARE_WEAPON_COLOR = Color3.fromRGB(123, 189, 246),
         COLOR_TOLERANCE = 5, -- RGB tolerance for color matching
-        
+
         -- Monster killing after rare weapon equipped
         MONSTER_PATTERNS = {
             "^Axe Skeleton%d+$",
@@ -139,13 +139,13 @@ local QUEST_CONFIG = {
         MONSTER_UNDERGROUND_OFFSET = 6,
         MONSTER_MAX_DISTANCE = 50,
     },
-    
+
     WAYPOINTS = {
         Vector3.new(-154.5, 39.1, 138.8),
         Vector3.new(11, 46.5, 124.2),
         Vector3.new(65, 74.2, -44),
     },
-    
+
     WAYPOINT_STOP_DISTANCE = 5,
     MAX_ROCKS_TO_MINE = 99999999999999,
     HOLD_POSITION_AFTER_MINE = true,
@@ -260,11 +260,11 @@ local State = {
     positionLockConn = nil,
     bodyVelocity = nil,
     bodyGyro = nil,
-    
+
     autoSellTask = nil,
     autoBuyTask = nil,
     isPaused = false,
-    
+
     -- Cobalt Mode State
     cobaltModeActive = false,
     forgeComplete = false,
@@ -284,7 +284,7 @@ local function isRockOccupied(rock)
     if not rock then return false end
     local expireTime = OccupiedRocks[rock]
     if not expireTime then return false end
-    
+
     if tick() > expireTime then
         OccupiedRocks[rock] = nil
         return false
@@ -318,10 +318,10 @@ local function cleanupState()
     if State.positionLockConn then State.positionLockConn:Disconnect() State.positionLockConn = nil end
     if State.bodyVelocity then State.bodyVelocity:Destroy() State.bodyVelocity = nil end
     if State.bodyGyro then State.bodyGyro:Destroy() State.bodyGyro = nil end
-    
+
     State.currentTarget = nil
     State.targetDestroyed = false
-    
+
     if ToolController then
         ToolController.holdingM1 = false
     end
@@ -335,15 +335,15 @@ local function getGold()
                      and playerGui.Main:FindFirstChild("Screen")
                      and playerGui.Main.Screen:FindFirstChild("Hud")
                      and playerGui.Main.Screen.Hud:FindFirstChild("Gold")
-    
+
     if not goldLabel or not goldLabel:IsA("TextLabel") then
         return 0
     end
-    
+
     local goldText = goldLabel.Text
     local goldString = string.gsub(goldText, "[$,]", "")
     local gold = tonumber(goldString)
-    
+
     return gold or 0
 end
 
@@ -354,19 +354,19 @@ local function getPlayerInventory()
     if not PlayerController or not PlayerController.Replica then
         return {}
     end
-    
+
     local replica = PlayerController.Replica
     if not replica.Data or not replica.Data.Inventory then
         return {}
     end
-    
+
     local inventory = {}
     for itemName, amount in pairs(replica.Data.Inventory) do
         if type(amount) == "number" and amount > 0 then
             inventory[itemName] = amount
         end
     end
-    
+
     return inventory
 end
 
@@ -375,12 +375,12 @@ local function getRequiredOreCount()
     if not config or not config.ENABLED then
         return {}, false
     end
-    
+
     local inventory = getPlayerInventory()
     local requiredOres = config.REQUIRED_ORES
     local oreStatus = {}
     local allComplete = true
-    
+
     for oreName, requiredCount in pairs(requiredOres) do
         local currentCount = inventory[oreName] or 0
         oreStatus[oreName] = {
@@ -392,23 +392,23 @@ local function getRequiredOreCount()
             allComplete = false
         end
     end
-    
+
     return oreStatus, allComplete
 end
 
 local function printOreStatus()
     local oreStatus, allComplete = getRequiredOreCount()
-    
+
     print("💎 Cobalt Mode Ore Status:")
     for oreName, status in pairs(oreStatus) do
         local icon = status.complete and "✅" or "⏳"
         print(string.format("   %s %s: %d/%d", icon, oreName, status.current, status.required))
     end
-    
+
     if allComplete then
         print("   🎉 All ores collected!")
     end
-    
+
     return allComplete
 end
 
@@ -465,18 +465,18 @@ local function isOreProtected(oreName)
     if not config or not config.ENABLED then
         return false
     end
-    
+
     -- Only protect ores when have Cobalt Pickaxe
     if not hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
         return false
     end
-    
+
     for _, protectedOre in ipairs(config.PROTECTED_ORES) do
         if oreName == protectedOre then
             return true
         end
     end
-    
+
     return false
 end
 
@@ -493,13 +493,13 @@ local function ForceEndDialogueAndRestore()
             if bb then bb.Visible = false end
         end
     end
-    
+
     local cam = Workspace.CurrentCamera
     if cam then
         cam.CameraType = Enum.CameraType.Custom
         cam.FieldOfView = 70
     end
-    
+
     local char = player.Character
     if char then
         local status = char:FindFirstChild("Status")
@@ -510,22 +510,22 @@ local function ForceEndDialogueAndRestore()
                 end
             end
         end
-        
+
         local humanoid = char:FindFirstChild("Humanoid")
         if humanoid then
             humanoid.WalkSpeed = 16
             humanoid.JumpPower = 50
         end
     end
-    
+
     if gui then
         local main = gui:FindFirstChild("Main")
         if main then main.Enabled = true end
-        
+
         local backpack = gui:FindFirstChild("BackpackGui")
         if backpack then backpack.Enabled = true end
     end
-    
+
     if DialogueRE then
         pcall(function()
             DialogueRE:FireServer("Closed")
@@ -538,16 +538,16 @@ end
 ----------------------------------------------------------------
 local function enableNoclip()
     if State.noclipConn then return end
-    
+
     local char = player.Character
     if not char then return end
-    
+
     State.noclipConn = RunService.Stepped:Connect(function()
         if not char or not char.Parent then
             if State.noclipConn then State.noclipConn:Disconnect() State.noclipConn = nil end
             return
         end
-        
+
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
                 part.CanCollide = false
@@ -568,34 +568,34 @@ local function smoothMoveTo(targetPos, callback)
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
-    
+
     if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
     if State.bodyVelocity then State.bodyVelocity:Destroy() State.bodyVelocity = nil end
     if State.bodyGyro then State.bodyGyro:Destroy() State.bodyGyro = nil end
-    
+
     enableNoclip()
-    
+
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Parent = hrp
     State.bodyVelocity = bv
-    
+
     local bg = Instance.new("BodyGyro")
     bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bg.P = 10000
     bg.D = 500
     bg.Parent = hrp
     State.bodyGyro = bg
-    
+
     if DEBUG_MODE then
         print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
     end
-    
+
     local reachedTarget = false
-    
+
     State.moveConn = RunService.Heartbeat:Connect(function()
         if reachedTarget then return end
-        
+
         -- Check if character or BodyVelocity is destroyed
         if not char or not char.Parent or not hrp or not hrp.Parent then
             if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
@@ -605,18 +605,18 @@ local function smoothMoveTo(targetPos, callback)
             State.bodyGyro = nil
             return
         end
-        
+
         -- Check if BodyVelocity was destroyed by game/other script
         if not bv or not bv.Parent then
             warn("   ⚠️ BodyVelocity destroyed! Recreating...")
-            
+
             -- Recreate BodyVelocity
             bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
             bv.Parent = hrp
             State.bodyVelocity = bv
         end
-        
+
         if not bg or not bg.Parent then
             bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
@@ -625,42 +625,42 @@ local function smoothMoveTo(targetPos, callback)
             bg.Parent = hrp
             State.bodyGyro = bg
         end
-        
+
         local currentPos = hrp.Position
         local direction = (targetPos - currentPos)
         local distance = direction.Magnitude
-        
+
         if distance < QUEST_CONFIG.STOP_DISTANCE then
             if DEBUG_MODE then
                 print(string.format("   ✅ Reached! (%.1f)", distance))
             end
-            
+
             reachedTarget = true
-            
+
             bv.Velocity = Vector3.zero
             hrp.Velocity = Vector3.zero
             hrp.AssemblyLinearVelocity = Vector3.zero
-            
+
             task.wait(0.1)
-            
+
             if bv and bv.Parent then bv:Destroy() end
             if bg and bg.Parent then bg:Destroy() end
             State.bodyVelocity = nil
             State.bodyGyro = nil
-            
+
             if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
-            
+
             if callback then callback() end
             return
         end
-        
+
         local speed = math.min(QUEST_CONFIG.MOVE_SPEED, distance * 10)
         local velocity = direction.Unit * speed
-        
+
         bv.Velocity = velocity
         bg.CFrame = CFrame.lookAt(currentPos, targetPos)
     end)
-    
+
     return true
 end
 
@@ -702,7 +702,7 @@ end
 local function getStashItemsUI()
     local bg = getStashBackground()
     if not bg then return {} end
-    
+
     local basket = {}
     for _, child in ipairs(bg:GetChildren()) do
         if child:IsA("GuiObject") and not string.match(child.Name, "^UI") then
@@ -722,38 +722,38 @@ end
 
 local function initAutoSellWithNPC()
     if AutoSellInitialized then return true end
-    
+
     print("\n" .. string.rep("=", 60))
     print("🔧 INITIALIZING AUTO SELL (ONE-TIME)")
     print(string.rep("=", 60))
-    
+
     local npcPos = getSellNPCPos()
     if not npcPos then
         warn("   ❌ NPC not found: " .. QUEST_CONFIG.AUTO_SELL_NPC_NAME)
         return false
     end
-    
+
     print(string.format("   ✅ Found %s at (%.1f, %.1f, %.1f)", 
         QUEST_CONFIG.AUTO_SELL_NPC_NAME, npcPos.X, npcPos.Y, npcPos.Z))
-    
+
     print("   🚶 Moving to NPC...")
-    
+
     local done = false
     smoothMoveTo(npcPos, function() done = true end)
-    
+
     local t0 = tick()
     while not done and tick() - t0 < 30 do
         task.wait(0.1)
     end
-    
+
     if not done then
         warn("   ❌ Failed to reach NPC (timeout)")
         return false
     end
-    
+
     print("   ✅ Reached NPC!")
     task.wait(1)
-    
+
     local npc = getSellNPC()
     if npc and ProximityDialogueRF then
         print("   💬 Opening dialog...")
@@ -761,34 +761,34 @@ local function initAutoSellWithNPC()
             ProximityDialogueRF:InvokeServer(npc)
         end)
     end
-    
+
     task.wait(2)
-    
+
     print("   🚪 Closing dialog...")
     ForceEndDialogueAndRestore()
-    
+
     task.wait(1)
-    
+
     AutoSellInitialized = true
     _G.Quest19AutoSellInitialized = true  -- Persist across script reloads
-    
+
     print("\n" .. string.rep("=", 60))
     print("✅ AUTO SELL INITIALIZED!")
     print(string.rep("=", 60))
-    
+
     return true
 end
 
 local function sellAllFromUI()
     if not DIALOGUE_RF then return end
     if not AutoSellInitialized then return end
-    
+
     local basket = getStashItemsUI()
-    
+
     -- 🛡️ Cobalt Mode: Skip protected ores (Diamond, Quartz, Amethyst)
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local hasCobaltPickaxe = hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE)
-    
+
     if hasCobaltPickaxe and config and config.ENABLED then
         for _, protectedOre in ipairs(config.PROTECTED_ORES) do
             if basket[protectedOre] and basket[protectedOre] > 0 then
@@ -799,22 +799,22 @@ local function sellAllFromUI()
             end
         end
     end
-    
+
     local hasItem = false
     for _, v in pairs(basket) do
         if v > 0 then hasItem = true break end
     end
-    
+
     if not hasItem then
         if DEBUG_MODE then print("AutoSell: no items (after filtering protected ores)") end
         return
     end
-    
+
     local args = { "SellConfirm", { Basket = basket } }
     local ok, res = pcall(function()
         return DIALOGUE_RF:InvokeServer(unpack(args))
     end)
-    
+
     if ok then
         print("💰 AutoSell: sold items!")
     else
@@ -826,13 +826,13 @@ local function startAutoSellTask()
     if not QUEST_CONFIG.AUTO_SELL_ENABLED or not DIALOGUE_RF then
         return
     end
-    
+
     print("🤖 Auto Sell Background Task Started!")
-    
+
     State.autoSellTask = task.spawn(function()
         while Quest19Active do
             task.wait(QUEST_CONFIG.AUTO_SELL_INTERVAL)
-            
+
             if not State.isPaused then
                 pcall(sellAllFromUI)
             end
@@ -848,13 +848,13 @@ local function purchasePickaxe(pickaxeName)
         warn("Purchase RF missing")
         return false
     end
-    
+
     print(string.format("   🛒 Purchasing: %s", pickaxeName))
-    
+
     local ok, res = pcall(function()
         return PURCHASE_RF:InvokeServer(pickaxeName, 1)
     end)
-    
+
     if ok then
         print(string.format("   ✅ Purchased: %s!", pickaxeName))
         return true
@@ -872,7 +872,7 @@ local function unlockPosition()
             print("   🔓 Position unlocked")
         end
     end
-    
+
     -- Also cleanup body movers to prevent conflict with smoothMoveTo
     if State.moveConn then
         State.moveConn:Disconnect()
@@ -980,17 +980,17 @@ local function startAutoBuyTask()
     if not QUEST_CONFIG.AUTO_BUY_ENABLED or not PURCHASE_RF then
         return
     end
-    
+
     print("🤖 Auto Buy Background Task Started!")
-    
+
     State.autoBuyTask = task.spawn(function()
         while Quest19Active do
             task.wait(QUEST_CONFIG.AUTO_BUY_INTERVAL)
-            
+
             if State.isPaused then
                 continue
             end
-            
+
             pcall(function()
                 tryBuyPickaxe()
             end)
@@ -1015,22 +1015,22 @@ end)
 
 local function openToolsMenu()
     if not UIController then return false end
-    
+
     if UIController.Modules["Menu"] then
         pcall(function() UIController:Open("Menu") end)
         task.wait(0.5)
-        
+
         local menuModule = UIController.Modules["Menu"]
         if menuModule.OpenTab then
             pcall(function() menuModule:OpenTab("Tools") end)
         elseif menuModule.SwitchTab then
             pcall(function() menuModule:SwitchTab("Tools") end)
         end
-        
+
         task.wait(0.5)
         return true
     end
-    
+
     return false
 end
 
@@ -1045,23 +1045,23 @@ end
 local function isItemEquippedFromUI(guid)
     local menuGui = playerGui:FindFirstChild("Menu")
     if not menuGui then return false end
-    
+
     local toolsFrame = menuGui:FindFirstChild("Frame") and menuGui.Frame:FindFirstChild("Frame") 
                     and menuGui.Frame.Frame:FindFirstChild("Menus") 
                     and menuGui.Frame.Frame.Menus:FindFirstChild("Tools")
                     and menuGui.Frame.Frame.Menus.Tools:FindFirstChild("Frame")
-    
+
     if not toolsFrame then return false end
-    
+
     local itemFrame = toolsFrame:FindFirstChild(guid)
     if not itemFrame then return false end
-    
+
     local equipButton = itemFrame:FindFirstChild("Equip")
     if not equipButton then return false end
-    
+
     local textLabel = equipButton:FindFirstChild("TextLabel")
     if not textLabel or not textLabel:IsA("TextLabel") then return false end
-    
+
     return textLabel.Text == "Unequip"
 end
 
@@ -1071,31 +1071,31 @@ local function getNonEquippedItems()
         warn("   ⚠️ Replica not available!")
         return {}
     end
-    
+
     local replica = PlayerController.Replica
-    
+
     if not replica.Data or not replica.Data.Inventory or not replica.Data.Inventory.Equipments then
         warn("   ⚠️ Equipments not found in Replica!")
         return {}
     end
-    
+
     print("   📂 Opening Tools menu to check equipped items...")
     openToolsMenu()
     task.wait(0.5)
-    
+
     local equipments = replica.Data.Inventory.Equipments
     local items = {}
-    
+
     for id, item in pairs(equipments) do
         if type(item) == "table" and item.Type and item.GUID then
             -- Skip Pickaxe (don't sell pickaxes)
             if string.find(item.Type, "Pickaxe") then
                 continue
             end
-            
+
             local guid = item.GUID
             local isEquipped = isItemEquippedFromUI(guid)
-            
+
             if not isEquipped then
                 table.insert(items, {
                     ID = id,
@@ -1109,32 +1109,33 @@ local function getNonEquippedItems()
             end
         end
     end
-    
+
     closeToolsMenu()
-    
+
     return items
 end
 
 -- Sell all non-equipped weapons and armor
 local function sellAllNonEquippedItems()
     print("\n💰 Selling all non-equipped Weapons/Armor...")
-    
+
     local items = getNonEquippedItems()
-    
+
     if #items == 0 then
         print("   ⏭️  No items to sell!")
         return true
     end
-    
+
     print(string.format("   📦 Found %d items to sell", #items))
-    
+
     -- Build basket with all GUIDs
     local basket = {}
     for _, item in ipairs(items) do
         basket[item.GUID] = true
         print(string.format("      - %s", item.Type))
     end
-    
+
+    -- Sell using DialogueService
     -- 1. Open Dialogue with NPC
     local npcName = QUEST_CONFIG.AUTO_SELL_NPC_NAME or "Greedy Cey"
     local npc = getProximityNPC(npcName)
@@ -1157,7 +1158,7 @@ local function sellAllNonEquippedItems()
     pcall(function()
         success = DIALOGUE_RF:InvokeServer("SellConfirm", { Basket = basket })
     end)
-    
+
     -- 3. Cleanup
     ForceEndDialogueAndRestore()
     
@@ -1174,7 +1175,7 @@ end
 local function tryBuyMagmaPickaxe()
     local config = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG
     if not config or not config.ENABLED then return false end
-    
+
     local pickaxeName = config.TARGET_PICKAXE or "Magma Pickaxe"
 
     -- 1) Check if already have Magma Pickaxe
@@ -1295,17 +1296,17 @@ local function startMagmaBuyTask()
     if not config or not config.ENABLED or not PURCHASE_RF then
         return
     end
-    
+
     print("🤖 Magma Pickaxe Auto Buy Task Started!")
-    
+
     State.magmaBuyTask = task.spawn(function()
         while Quest19Active do
             task.wait(30) -- Check every 30 seconds
-            
+
             if State.isPaused then
                 continue
             end
-            
+
             -- Only try if we have Cobalt Pickaxe already
             if hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
                 pcall(function()
@@ -1329,7 +1330,7 @@ local function getStashCapacity()
                       and menu.Frame.Frame:FindFirstChild("Menus") 
                       and menu.Frame.Frame.Menus:FindFirstChild("Stash") 
                       and menu.Frame.Frame.Menus.Stash:FindFirstChild("Capacity")
-    
+
     if not capacityLabel or not capacityLabel:IsA("TextLabel") then
         return 0, 0
     end
@@ -1337,53 +1338,53 @@ local function getStashCapacity()
     -- Format: "Stash Capacity: 145/218"
     local text = capacityLabel.Text
     local current, max = string.match(text, "(%d+)/(%d+)")
-    
+
     return tonumber(current) or 0, tonumber(max) or 0
 end
 
 local function executeFullStashRoutine()
     print("\n🚨 STASH ACTION REQUIRED: Stash Full!")
-    
+
     -- 1. Pause everything
     local wasMining = IsMiningActive
     if wasMining then
         State.isPaused = true
         print("   ⏸️  Pausing mining (Stash Full)...")
-        
+
         if ToolController then
             ToolController.holdingM1 = false
         end
-        
+
         unlockPosition()
         task.wait(1)
     end
-    
+
     -- 2. Move to Shop
     local shopPos = QUEST_CONFIG.STASH_CHECK_CONFIG.SHOP_POSITION
     print(string.format("   🚶 Walking to Shop for stash clear (%.1f, %.1f, %.1f)...",
         shopPos.X, shopPos.Y, shopPos.Z))
-        
+
     local done = false
     smoothMoveTo(shopPos, function() done = true end)
-    
+
     local t0 = tick()
     while not done and tick() - t0 < 45 do
         task.wait(0.1)
     end
-    
+
     if not done then
         warn("   ❌ Failed to reach shop (Stash Routine)")
         if wasMining then State.isPaused = false end
         return
     end
-    
+
     print("   ✅ Arrived at Shop!")
     task.wait(1)
-    
+
     -- 3. Talk to NPC
     local npcName = QUEST_CONFIG.STASH_CHECK_CONFIG.NPC_NAME
     local npc = Workspace:WaitForChild("Proximity"):FindFirstChild(npcName)
-    
+
     if npc and ProximityDialogueRF then
         print(string.format("   💬 Talking to %s...", npcName))
         pcall(function()
@@ -1395,9 +1396,9 @@ local function executeFullStashRoutine()
     else
         warn("   ❌ NPC not found for stash clear!")
     end
-    
+
     task.wait(1)
-    
+
     -- 4. Resume
     if wasMining then
         print("   ▶️  Resuming mining after Stash Check...")
@@ -1408,27 +1409,27 @@ end
 local function startStashCheckTask()
     local config = QUEST_CONFIG.STASH_CHECK_CONFIG
     if not config or not config.ENABLED then return end
-    
+
     print("🤖 Stash Capacity Check Task Started!")
-    
+
     task.spawn(function()
         local lastFullActionTime = 0
-        
+
         while Quest19Active do
             task.wait(config.CHECK_INTERVAL)
-            
+
             if State.isPaused then continue end
-            
+
             -- Check cooldown
             if tick() - lastFullActionTime < config.FULL_COOLDOWN then
                 continue
             end
-            
+
             local current, max = getStashCapacity()
-            
+
             if max > 0 and current >= max then
                 print(string.format("   ⚠️ Stash Full Detected: %d/%d", current, max))
-                
+
                 lastFullActionTime = tick()
                 executeFullStashRoutine()
             end
@@ -1446,31 +1447,31 @@ local function setupForgeHook()
         print("⚙️  Forge Hook already active")
         return
     end
-    
+
     if not ForgeService then
         warn("❌ ForgeService not available!")
         return
     end
-    
+
     print("🔧 Installing Forge Hook...")
-    
+
     local originalChangeSequence = ForgeService.ChangeSequence
-    
+
     ForgeService.ChangeSequence = function(self, sequenceName, args)
         print(string.format("   🔄 Forge Sequence: %s", sequenceName or "nil"))
-        
+
         local result = originalChangeSequence(self, sequenceName, args)
-        
+
         task.spawn(function()
             if sequenceName == "Complete" or sequenceName == "Finish" then
                 State.forgeComplete = true
                 print("   ✅ Forge completed!")
             end
         end)
-        
+
         return result
     end
-    
+
     getgenv().ForgeHookActive = true
     print("✅ Forge Hook installed!")
 end
@@ -1510,29 +1511,29 @@ end
 local function moveToForge()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local forgePos = config.FORGE_POSITION
-    
+
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
-    
+
     local distance = (forgePos - hrp.Position).Magnitude
-    
+
     print(string.format("🚶 Moving to Forge at (%.1f, %.1f, %.1f) (%.1f studs away)...", 
         forgePos.X, forgePos.Y, forgePos.Z, distance))
-    
+
     local done = false
     smoothMoveTo(forgePos, function() done = true end)
-    
+
     local t0 = tick()
     while not done and tick() - t0 < 60 do
         task.wait(0.1)
     end
-    
+
     if not done then
         warn("   ❌ Failed to reach Forge!")
         return false
     end
-    
+
     print("✅ Reached Forge!")
     task.wait(1)
     return true
@@ -1543,14 +1544,14 @@ local function startForge(oreSelection)
     for oreName, count in pairs(oreSelection) do
         print(string.format("   - %s: %d", oreName, count))
     end
-    
+
     if not FORGE_OBJECT then
         warn("❌ Forge Object not found!")
         return false
     end
-    
+
     if not ForgeService then return false end
-    
+
     -- 1. Invoke Proximity (Server interaction)
     print("   🔌 Invoking Forge Proximity...")
     local proxSuccess = pcall(function()
@@ -1575,7 +1576,7 @@ local function startForge(oreSelection)
             FastForge = false
         })
     end)
-    
+
     if success then
         print("✅ Forge Melt started!")
         return true
@@ -1590,22 +1591,22 @@ end
 ----------------------------------------------------------------
 local function openToolsMenu()
     if not UIController then return false end
-    
+
     if UIController.Modules["Menu"] then
         pcall(function() UIController:Open("Menu") end)
         task.wait(0.5)
-        
+
         local menuModule = UIController.Modules["Menu"]
         if menuModule.OpenTab then
             pcall(function() menuModule:OpenTab("Tools") end)
         elseif menuModule.SwitchTab then
             pcall(function() menuModule:SwitchTab("Tools") end)
         end
-        
+
         task.wait(0.5)
         return true
     end
-    
+
     return false
 end
 
@@ -1620,41 +1621,41 @@ local function findRareWeaponByColor()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local targetColor = config.RARE_WEAPON_COLOR
     local tolerance = config.COLOR_TOLERANCE or 5
-    
+
     print("🔍 Searching for Rare Weapon (Color: 123, 189, 246)...")
-    
+
     -- Open Tools menu to check items
     openToolsMenu()
     task.wait(0.5)
-    
+
     local toolsFrame = playerGui:FindFirstChild("Menu")
         and playerGui.Menu:FindFirstChild("Frame")
         and playerGui.Menu.Frame:FindFirstChild("Frame")
         and playerGui.Menu.Frame.Frame:FindFirstChild("Menus")
         and playerGui.Menu.Frame.Frame.Menus:FindFirstChild("Tools")
         and playerGui.Menu.Frame.Frame.Menus.Tools:FindFirstChild("Frame")
-    
+
     if not toolsFrame then
         warn("   ❌ Tools Frame not found!")
         closeToolsMenu()
         return nil
     end
-    
+
     for _, child in ipairs(toolsFrame:GetChildren()) do
         if child:IsA("GuiObject") then
             -- Skip Pickaxe
             if string.find(child.Name, "Pickaxe") then continue end
-            
+
             local glowImage = child:FindFirstChild("GlowImage")
             if glowImage and glowImage:IsA("ImageLabel") then
                 local color = glowImage.ImageColor3
                 local r, g, b = color.R * 255, color.G * 255, color.B * 255
-                
+
                 -- Compare colors with tolerance
                 if math.abs(r - 123) < tolerance 
                     and math.abs(g - 189) < tolerance 
                     and math.abs(b - 246) < tolerance then
-                    
+
                     print(string.format("   🌟 RARE WEAPON FOUND! GUID: %s (Color: %.0f, %.0f, %.0f)", 
                         child.Name, r, g, b))
                     closeToolsMenu()
@@ -1663,7 +1664,7 @@ local function findRareWeaponByColor()
             end
         end
     end
-    
+
     print("   ⚠️ No rare weapon found")
     closeToolsMenu()
     return nil
@@ -1671,28 +1672,28 @@ end
 
 local function equipWeaponByGUID(guid)
     print(string.format("⚡ Equipping weapon: %s", guid))
-    
+
     if not PlayerController or not PlayerController.Replica then
         warn("   ❌ PlayerController not available!")
         return false
     end
-    
+
     local replica = PlayerController.Replica
     if not replica.Data or not replica.Data.Inventory or not replica.Data.Inventory.Equipments then
         warn("   ❌ Equipments not found!")
         return false
     end
-    
+
     local equipments = replica.Data.Inventory.Equipments
-    
+
     for id, item in pairs(equipments) do
         if type(item) == "table" and item.GUID == guid then
             print(string.format("   📦 Found item: %s (%s)", item.Type or "Unknown", guid))
-            
+
             local success = pcall(function()
                 CHAR_RF:InvokeServer(item)
             end)
-            
+
             if success then
                 print("   ✅ Weapon equipped!")
                 return true
@@ -1702,7 +1703,7 @@ local function equipWeaponByGUID(guid)
             end
         end
     end
-    
+
     warn("   ❌ Item not found in inventory!")
     return false
 end
@@ -1712,16 +1713,16 @@ end
 ----------------------------------------------------------------
 local function getMonsterUndergroundPosition(monsterModel)
     if not monsterModel or not monsterModel.Parent then return nil end
-    
+
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local offset = config.MONSTER_UNDERGROUND_OFFSET or 3
-    
+
     local hrp = monsterModel:FindFirstChild("HumanoidRootPart")
     if hrp then
         local pos = hrp.Position
         return Vector3.new(pos.X, pos.Y - offset, pos.Z)
     end
-    
+
     return nil
 end
 
@@ -1741,17 +1742,17 @@ end
 
 local function findNearestMonster()
     if not LIVING_FOLDER then return nil end
-    
+
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
-    
+
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local patterns = config.MONSTER_PATTERNS
     local maxDist = config.MONSTER_MAX_DISTANCE or 50
-    
+
     local targetMonster, minDist = nil, math.huge
-    
+
     for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
         for _, pattern in ipairs(patterns) do
             if string.match(child.Name, pattern) then
@@ -1769,17 +1770,17 @@ local function findNearestMonster()
             end
         end
     end
-    
+
     return targetMonster, minDist
 end
 
 local function watchMonsterHP(monster)
     if State.hpWatchConn then State.hpWatchConn:Disconnect() end
     if not monster then return end
-    
+
     local humanoid = monster:FindFirstChild("Humanoid")
     if not humanoid then return end
-    
+
     State.hpWatchConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
         local hp = humanoid.Health or 0
         if hp <= 0 then
@@ -1794,14 +1795,14 @@ local function lockPositionFollowMonster(targetMonster)
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp or not targetMonster then return end
-    
+
     if State.positionLockConn then
         State.positionLockConn:Disconnect()
         State.positionLockConn = nil
     end
-    
+
     local angle = math.rad(QUEST_CONFIG.LAYING_ANGLE)
-    
+
     State.positionLockConn = RunService.Heartbeat:Connect(function()
         if not char or not char.Parent or not hrp or not hrp.Parent then
             if State.positionLockConn then
@@ -1810,7 +1811,7 @@ local function lockPositionFollowMonster(targetMonster)
             end
             return
         end
-        
+
         if not targetMonster or not targetMonster.Parent then
             if State.positionLockConn then
                 State.positionLockConn:Disconnect()
@@ -1818,18 +1819,18 @@ local function lockPositionFollowMonster(targetMonster)
             end
             return
         end
-        
+
         local targetPos = getMonsterUndergroundPosition(targetMonster)
         if targetPos then
             local baseCFrame = CFrame.new(targetPos)
             local layingCFrame = baseCFrame * CFrame.Angles(angle, 0, 0)
-            
+
             hrp.CFrame = layingCFrame
             hrp.Velocity = Vector3.zero
             hrp.AssemblyLinearVelocity = Vector3.zero
         end
     end)
-    
+
     print("   🔒 Following monster...")
 end
 
@@ -1837,75 +1838,75 @@ local function doKillMonsters()
     print("\n" .. string.rep("=", 60))
     print("⚔️ COBALT MODE: MONSTER KILLING")
     print(string.rep("=", 60))
-    
+
     IsKillingActive = true
     enableNoclip()
-    
+
     while Quest19Active and not State.isPaused do
         local char = player.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        
+
         if not hrp then
             warn("   ⚠️ Waiting for character...")
             task.wait(2)
             continue
         end
-        
+
         -- Find nearest monster
         local targetMonster, dist = findNearestMonster()
-        
+
         if not targetMonster then
             print("   ⏳ No monsters found, waiting...")
             unlockPosition()
             task.wait(3)
             continue
         end
-        
+
         State.currentTarget = targetMonster
         State.targetDestroyed = false
-        
+
         local targetPos = getMonsterUndergroundPosition(targetMonster)
         if not targetPos then
             warn("   ❌ Cannot get monster position!")
             task.wait(1)
             continue
         end
-        
+
         local currentHP = getMonsterHP(targetMonster)
         print(string.format("   🎯 Target: %s (HP: %.0f, Dist: %.0f)", 
             targetMonster.Name, currentHP, dist))
-        
+
         -- Move to monster and lock position
         watchMonsterHP(targetMonster)
-        
+
         local moveComplete = false
         smoothMoveTo(targetPos, function()
             lockPositionFollowMonster(targetMonster)
             moveComplete = true
         end)
-        
+
         local t0 = tick()
         while not moveComplete and tick() - t0 < 30 do
             task.wait(0.1)
         end
-        
+
         if not moveComplete then
             warn("   ⚠️ Move timeout, skip monster")
             State.targetDestroyed = true
             continue
         end
-        
+
         task.wait(0.3)
-        
+
         -- Attack loop
         while not State.targetDestroyed and Quest19Active and not State.isPaused do
             if not char or not char.Parent then break end
-            
+
             if not targetMonster or not targetMonster.Parent or not isMonsterValid(targetMonster) then
                 State.targetDestroyed = true
                 break
             end
-            
+
             -- Check if monster too far
             local currentMonsterPos = getMonsterUndergroundPosition(targetMonster)
             if currentMonsterPos and hrp then
@@ -1916,14 +1917,14 @@ local function doKillMonsters()
                     break
                 end
             end
-            
+
             -- Equip and attack with weapon
             local toolInHand = char:FindFirstChildWhichIsA("Tool")
             local isWeaponHeld = toolInHand and not string.find(toolInHand.Name, "Pickaxe")
-            
+
             if not isWeaponHeld then
                 if ToolController then ToolController.holdingM1 = false end
-                
+
                 -- Find and equip weapon from hotbar
                 local key, weaponName = findWeaponSlotKey()
                 if key then
@@ -1949,14 +1950,14 @@ local function doKillMonsters()
                     end)
                 end
             end
-            
+
             task.wait(0.15)
         end
-        
+
         print("   🔄 Finding next monster...")
         task.wait(0.5)
     end
-    
+
     print("\n⚔️ Monster killing ended")
     IsKillingActive = false
     unlockPosition()
@@ -1969,52 +1970,52 @@ end
 local function doCobaltModeRoutine()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     if not config or not config.ENABLED then return false end
-    
+
     -- Check if we have Cobalt Pickaxe
     if not hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
         return false
     end
-    
+
     -- Check ore requirements
     local oreStatus, allComplete = getRequiredOreCount()
-    
+
     if not allComplete then
         return false -- Continue mining
     end
-    
+
     print("\n" .. string.rep("=", 60))
     print("🎯 COBALT MODE: ALL ORES COLLECTED!")
     print(string.rep("=", 60))
     printOreStatus()
-    
+
     State.cobaltModeActive = true
-    
+
     -- 1. Pause mining
     local wasMining = IsMiningActive
     if wasMining then
         State.isPaused = true
         print("   ⏸️ Pausing mining for Cobalt Mode...")
-        
+
         if ToolController then
             ToolController.holdingM1 = false
         end
-        
+
         unlockPosition()
         task.wait(1)
     end
-    
+
     -- 2. Sell all non-equipped items first
     print("\n📦 Step 1: Selling non-equipped items...")
     local sellShopPos = config.SELL_SHOP_POSITION
-    
+
     local done = false
     smoothMoveTo(sellShopPos, function() done = true end)
-    
+
     local t0 = tick()
     while not done and tick() - t0 < 30 do
         task.wait(0.1)
     end
-    
+
     if done then
         print("   ✅ Arrived at sell shop!")
         task.wait(1)
@@ -2023,44 +2024,44 @@ local function doCobaltModeRoutine()
     else
         warn("   ⚠️ Failed to reach sell shop, continuing...")
     end
-    
+
     -- Forge loop until rare weapon found
     local forgeAttempts = 0
     local maxForgeAttempts = 10
-    
+
     while Quest19Active and not State.rareWeaponFound and forgeAttempts < maxForgeAttempts do
         forgeAttempts = forgeAttempts + 1
         print(string.format("\n🔨 Forge Attempt #%d", forgeAttempts))
-        
+
         -- Check if we have enough ores
         local _, haveOres = getRequiredOreCount()
-        
+
         if not haveOres then
             print("   ⛏️ Need more ores! Returning to mining...")
             State.isPaused = false
             State.cobaltModeActive = false
             return false -- Go back to mining
         end
-        
+
         -- 3. Move to Forge
         print("\n⚒️ Step 2: Moving to Forge...")
         setupForgeHook()
-        
+
         if not moveToForge() then
             warn("   ⚠️ Failed to reach Forge!")
             task.wait(3)
             continue
         end
-        
+
         -- 4. Forge with specific ores
         State.forgeComplete = false
         local oreSelection = {}
         for oreName, count in pairs(config.REQUIRED_ORES) do
             oreSelection[oreName] = count
         end
-        
+
         local forgeSuccess = startForge(oreSelection)
-        
+
         if forgeSuccess then
             print("   ⏳ Waiting for forge to complete (27 seconds)...")
             task.wait(27)
@@ -2072,22 +2073,22 @@ local function doCobaltModeRoutine()
             task.wait(3)
             continue
         end
-        
+
         task.wait(2)
-        
+
         -- 5. Check for rare weapon
         print("\n🔍 Step 3: Checking for Rare Weapon...")
         local rareGUID = findRareWeaponByColor()
-        
+
         if rareGUID then
             State.rareWeaponFound = true
             State.rareWeaponGUID = rareGUID
-            
+
             -- 6. Equip rare weapon
             print("\n⚡ Step 4: Equipping Rare Weapon...")
             equipWeaponByGUID(rareGUID)
             task.wait(1)
-            
+
             -- 7. Switch to Monster Killing mode
             print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
             doKillMonsters()
@@ -2096,7 +2097,7 @@ local function doCobaltModeRoutine()
             print("   🔄 No rare weapon, will try again if have ores...")
         end
     end
-    
+
     -- If we get here, either ran out of attempts or ores
     print("\n⚠️ Cobalt Mode: Max attempts reached or out of ores")
     State.isPaused = false
@@ -2110,11 +2111,11 @@ end
 local function findWeaponSlotKey()
     local gui = player:FindFirstChild("PlayerGui")
     if not gui then return nil, nil end
-    
+
     local hotbar = gui:FindFirstChild("BackpackGui") 
                    and gui.BackpackGui:FindFirstChild("Backpack") 
                    and gui.BackpackGui.Backpack:FindFirstChild("Hotbar")
-    
+
     if hotbar then
         for _, slotFrame in ipairs(hotbar:GetChildren()) do
             local frame = slotFrame:FindFirstChild("Frame")
@@ -2124,7 +2125,7 @@ local function findWeaponSlotKey()
             end
         end
     end
-    
+
     return nil, nil
 end
 
@@ -2144,11 +2145,11 @@ end
 
 local function needsTeleport()
     local currentIsland = getCurrentIsland()
-    
+
     if not currentIsland then
         return true
     end
-    
+
     if currentIsland == "Island1" then
         print(string.format("   ✅ On %s → Need teleport!", currentIsland))
         return true
@@ -2169,25 +2170,25 @@ local function getPlayerLevel()
                       and playerGui.Main:FindFirstChild("Screen")
                       and playerGui.Main.Screen:FindFirstChild("Hud")
                       and playerGui.Main.Screen.Hud:FindFirstChild("Level")
-    
+
     if not levelLabel or not levelLabel:IsA("TextLabel") then
         return nil
     end
-    
+
     local levelText = levelLabel.Text
     local level = tonumber(string.match(levelText, "%d+"))
-    
+
     return level
 end
 
 local function hasRequiredLevel()
     local level = getPlayerLevel()
-    
+
     if not level then
         warn("   ❌ Cannot determine level!")
         return false
     end
-    
+
     if level >= QUEST_CONFIG.REQUIRED_LEVEL then
         print(string.format("   ✅ Level %d >= %d", level, QUEST_CONFIG.REQUIRED_LEVEL))
         return true
@@ -2223,11 +2224,11 @@ end
 local function findPickaxeSlotKey()
     local gui = player:FindFirstChild("PlayerGui")
     if not gui then return nil end
-    
+
     local hotbar = gui:FindFirstChild("BackpackGui") 
                    and gui.BackpackGui:FindFirstChild("Backpack") 
                    and gui.BackpackGui.Backpack:FindFirstChild("Hotbar")
-    
+
     if hotbar then
         for _, slotFrame in ipairs(hotbar:GetChildren()) do
             local frame = slotFrame:FindFirstChild("Frame")
@@ -2237,23 +2238,23 @@ local function findPickaxeSlotKey()
             end
         end
     end
-    
+
     return nil
 end
 
 local function checkMiningError()
     local gui = player:FindFirstChild("PlayerGui")
     if not gui then return false end
-    
+
     local notif = gui:FindFirstChild("Notifications")
     if not notif then return false end
-    
+
     local screen = notif:FindFirstChild("Screen")
     if not screen then return false end
-    
+
     local notifFrame = screen:FindFirstChild("NotificationsFrame")
     if not notifFrame then return false end
-    
+
     -- Loop ALL TextFrame children in NotificationsFrame
     -- Path: NotificationsFrame → TextFrame → TextFrame → TextLabel
     for _, textFrame1 in ipairs(notifFrame:GetChildren()) do
@@ -2269,7 +2270,7 @@ local function checkMiningError()
             end
         end
     end
-    
+
     return false
 end
 
@@ -2280,16 +2281,16 @@ local function lockPositionLayingDown(targetPos)
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
-    
+
     if State.positionLockConn then
         State.positionLockConn:Disconnect()
         State.positionLockConn = nil
     end
-    
+
     local angle = math.rad(QUEST_CONFIG.LAYING_ANGLE)
     local baseCFrame = CFrame.new(targetPos)
     local layingCFrame = baseCFrame * CFrame.Angles(angle, 0, 0)
-    
+
     State.positionLockConn = RunService.Heartbeat:Connect(function()
         if not char or not char.Parent or not hrp or not hrp.Parent then
             if State.positionLockConn then
@@ -2298,12 +2299,12 @@ local function lockPositionLayingDown(targetPos)
             end
             return
         end
-        
+
         hrp.CFrame = layingCFrame
         hrp.Velocity = Vector3.zero
         hrp.AssemblyLinearVelocity = Vector3.zero
     end)
-    
+
     if DEBUG_MODE then
         print("   🔒 Position locked")
     end
@@ -2314,24 +2315,24 @@ local function transitionToNewTarget(newTargetPos)
         State.positionLockConn:Disconnect()
         State.positionLockConn = nil
     end
-    
+
     local moveComplete = false
     smoothMoveTo(newTargetPos, function()
         lockPositionLayingDown(newTargetPos)
         moveComplete = true
     end)
-    
+
     local timeout = 60
     local startTime = tick()
     while not moveComplete and tick() - startTime < timeout do
         task.wait(0.1)
     end
-    
+
     if not moveComplete then
         warn("   ⚠️ Transition timeout!")
         return false
     end
-    
+
     return true
 end
 
@@ -2343,15 +2344,15 @@ local function teleportToIsland(islandName)
         warn("   ❌ Portal Remote not available!")
         return false
     end
-    
+
     print(string.format("   🌀 Teleporting to: %s", islandName))
-    
+
     local args = {islandName}
-    
+
     local success, result = pcall(function()
         return PORTAL_RF:InvokeServer(unpack(args))
     end)
-    
+
     if success then
         print(string.format("   ✅ Teleported to: %s", islandName))
         return true
@@ -2368,7 +2369,7 @@ local function getRockUndergroundPosition(rockModel)
     if not rockModel or not rockModel.Parent then
         return nil
     end
-    
+
     local pivotCFrame = nil
     pcall(function()
         if rockModel.GetPivot then
@@ -2377,23 +2378,23 @@ local function getRockUndergroundPosition(rockModel)
             pivotCFrame = rockModel.WorldPivot
         end
     end)
-    
+
     if pivotCFrame then
         local pos = pivotCFrame.Position
         return Vector3.new(pos.X, pos.Y - QUEST_CONFIG.UNDERGROUND_OFFSET, pos.Z)
     end
-    
+
     if rockModel.PrimaryPart then
         local pos = rockModel.PrimaryPart.Position
         return Vector3.new(pos.X, pos.Y - QUEST_CONFIG.UNDERGROUND_OFFSET, pos.Z)
     end
-    
+
     local part = rockModel:FindFirstChildWhichIsA("BasePart")
     if part then
         local pos = part.Position
         return Vector3.new(pos.X, pos.Y - QUEST_CONFIG.UNDERGROUND_OFFSET, pos.Z)
     end
-    
+
     return nil
 end
 
@@ -2401,11 +2402,11 @@ local function getRockHP(rock)
     if not rock or not rock.Parent then
         return 0
     end
-    
+
     local success, result = pcall(function()
         return rock:GetAttribute("Health") or 0
     end)
-    
+
     return success and result or 0
 end
 
@@ -2413,11 +2414,11 @@ local function isTargetValid(rock)
     if not rock or not rock.Parent then
         return false
     end
-    
+
     if not rock:FindFirstChildWhichIsA("BasePart") then
         return false
     end
-    
+
     local hp = getRockHP(rock)
     return hp > 0
 end
@@ -2426,7 +2427,7 @@ end
 local function getCurrentMiningConfig()
     local magmaPickaxe = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG and QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE or "Magma Pickaxe"
     local cobaltPickaxe = QUEST_CONFIG.TARGET_PICKAXE or "Cobalt Pickaxe"
-    
+
     -- Tier 3: Magma Pickaxe → Basalt Core (User requested due to crowding at Vein)
     if hasPickaxe(magmaPickaxe) then
         print("   🔥 Have Magma Pickaxe → Mining Basalt Core (Crowded Vein)")
@@ -2455,25 +2456,25 @@ local function findNearestBasaltRock(excludeRock)
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
-    
+
     cleanupExpiredBlacklist()
-    
+
     -- Get current mining config based on pickaxe
     local miningConfig = getCurrentMiningConfig()
     local rockName = miningConfig.ROCK_NAME
     local miningPaths = miningConfig.MINING_PATHS
-    
+
     local targetRock, minDist = nil, math.huge
     local skippedOccupied = 0
-    
+
     for _, pathName in ipairs(miningPaths) do
         local folder = MINING_FOLDER_PATH:FindFirstChild(pathName)
-        
+
         if folder then
             for _, child in ipairs(folder:GetChildren()) do
                 if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
                     local rock = child:FindFirstChild(rockName)
-                    
+
                     if rock and rock ~= excludeRock and isTargetValid(rock) then
                         if isRockOccupied(rock) then
                             skippedOccupied = skippedOccupied + 1
@@ -2481,7 +2482,7 @@ local function findNearestBasaltRock(excludeRock)
                             local pos = getRockUndergroundPosition(rock)
                             if pos then
                                 local dist = (pos - hrp.Position).Magnitude
-                                
+
                                 if dist < minDist then
                                     minDist = dist
                                     targetRock = rock
@@ -2493,11 +2494,11 @@ local function findNearestBasaltRock(excludeRock)
             end
         end
     end
-    
+
     if skippedOccupied > 0 then
         print(string.format("   ⏭️ Skipped %d occupied rocks (blacklisted)", skippedOccupied))
     end
-    
+
     return targetRock, minDist, rockName
 end
 
@@ -2505,16 +2506,16 @@ local function watchRockHP(rock)
     if State.hpWatchConn then
         State.hpWatchConn:Disconnect()
     end
-    
+
     if not rock then return end
-    
+
     State.hpWatchConn = rock:GetAttributeChangedSignal("Health"):Connect(function()
         local hp = rock:GetAttribute("Health") or 0
-        
+
         if hp <= 0 then
             print("   ✅ Rock destroyed!")
             State.targetDestroyed = true
-            
+
             if ToolController then
                 ToolController.holdingM1 = false
             end
@@ -2529,26 +2530,26 @@ local function doMineBasaltRock()
     -- Check pickaxe and determine rock type
     local miningConfig = getCurrentMiningConfig()
     local currentRockName = miningConfig.ROCK_NAME
-    
+
     print("\n⛏️ Mining Started...")
     print(string.format("   🎯 Mining: %s", currentRockName))
     print(string.format("   Target: %d rocks", QUEST_CONFIG.MAX_ROCKS_TO_MINE))
-    
+
     IsMiningActive = true
-    
+
     local miningCount = 0
-    
+
     print("\n" .. string.rep("=", 50))
     print(string.format("⛏️ Mining Loop (%s)...", currentRockName))
     print(string.rep("=", 50))
-    
+
     while Quest19Active and miningCount < QUEST_CONFIG.MAX_ROCKS_TO_MINE do
         if State.isPaused then
             print("   ⏸️  Paused (Auto Buy running)...")
             task.wait(2)
             continue
         end
-        
+
         -- 🎯 COBALT MODE: Check if ores are collected
         if hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
             local _, allOresCollected = getRequiredOreCount()
@@ -2563,22 +2564,22 @@ local function doMineBasaltRock()
                 -- If not successful, continue mining for more ores
             end
         end
-        
+
         local char = player.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        
+
         if not hrp then
             warn("   ⚠️ Waiting for character...")
             task.wait(2)
             continue
         end
-        
+
         if not State.positionLockConn and not State.moveConn and not State.bodyVelocity then
             cleanupState()
         end
-        
+
         local targetRock, dist, rockName = findNearestBasaltRock(State.currentTarget)
-        
+
         if not targetRock then
             warn(string.format("   ❌ No %s found!", rockName or "rocks"))
             unlockPosition()
@@ -2586,29 +2587,29 @@ local function doMineBasaltRock()
             task.wait(3)
             continue
         end
-        
+
         local previousTarget = State.currentTarget
         State.currentTarget = targetRock
         State.targetDestroyed = false
-        
+
         local targetPos = getRockUndergroundPosition(targetRock)
-        
+
         if not targetPos then
             warn("   ❌ Cannot get position!")
             task.wait(1)
             continue
         end
-        
+
         local currentHP = getRockHP(targetRock)
-        
+
         print(string.format("\n🎯 Target #%d: %s (HP: %d, Dist: %.1f)", 
             miningCount + 1,
             targetRock.Parent.Parent.Name,
             currentHP, 
             dist))
-        
+
         watchRockHP(targetRock)
-        
+
         -- If we're locked to a DIFFERENT target, use smooth transition
         -- Otherwise, always use smoothMoveTo (even for same target after respawn)
         if State.positionLockConn and previousTarget and previousTarget ~= targetRock then
@@ -2619,19 +2620,19 @@ local function doMineBasaltRock()
             if State.positionLockConn then
                 unlockPosition()
             end
-            
+
             local moveStarted = false
             smoothMoveTo(targetPos, function()
                 lockPositionLayingDown(targetPos)
                 moveStarted = true
             end)
-            
+
             local timeout = 60
             local startTime = tick()
             while not moveStarted and tick() - startTime < timeout do
                 task.wait(0.1)
             end
-            
+
             if not moveStarted then
                 warn("   ⚠️ Move timeout, skip this rock")
                 State.targetDestroyed = true
@@ -2639,19 +2640,19 @@ local function doMineBasaltRock()
                 continue
             end
         end
-        
+
         task.wait(0.5)
-        
+
         while not State.targetDestroyed and Quest19Active and not State.isPaused do
             if not char or not char.Parent then
                 break
             end
-            
+
             if not targetRock or not targetRock.Parent then
                 State.targetDestroyed = true
                 break
             end
-            
+
             if checkMiningError() then
                 print("   ⚠️ Someone else mining! Switching target...")
                 markRockAsOccupied(targetRock)
@@ -2661,15 +2662,15 @@ local function doMineBasaltRock()
                 end
                 break
             end
-            
+
             local toolInHand = char:FindFirstChildWhichIsA("Tool")
             local isPickaxeHeld = toolInHand and string.find(toolInHand.Name, "Pickaxe")
-            
+
             if not isPickaxeHeld then
                 if ToolController then
                     ToolController.holdingM1 = false
                 end
-                
+
                 local key = findPickaxeSlotKey()
                 if key then
                     pressKey(key)
@@ -2702,27 +2703,27 @@ local function doMineBasaltRock()
                     end)
                 end
             end
-            
+
             task.wait(0.15)
         end
-        
+
         if State.targetDestroyed then
             miningCount = miningCount + 1
         end
-        
+
         if QUEST_CONFIG.HOLD_POSITION_AFTER_MINE then
             print("   ⏸️  Holding position, searching for next target...")
         else
             unlockPosition()
         end
-        
+
         task.wait(0.5)
     end
-    
+
     print("\n" .. string.rep("=", 50))
     print("✅ Mining ended")
     print(string.rep("=", 50))
-    
+
     IsMiningActive = false
     unlockPosition()
     disableNoclip()
