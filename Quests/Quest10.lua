@@ -24,7 +24,7 @@ local QUEST_CONFIG = {
     QUEST_NAME = "Runes of Power",
     NPC_NAME = "Runemaker",
     NPC_POSITION = Vector3.new(-271.7, 20.3, 141.9),
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     NPC_STOP_DISTANCE = 5,
     
     -- Runes to look for (pick one)

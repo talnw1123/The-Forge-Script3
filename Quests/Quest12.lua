@@ -22,7 +22,7 @@ local QUEST_CONFIG = {
     QUEST_NAME = "Everything starts now.",
     NPC_NAME = "Wizard",
     NPC_POSITION = Vector3.new(-24.1, 80.9, -358.5),
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     NPC_STOP_DISTANCE = 5,
 }
 

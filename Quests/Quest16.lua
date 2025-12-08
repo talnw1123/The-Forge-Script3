@@ -31,7 +31,7 @@ local QUEST_CONFIG = {
     ITEM_NAME = "Stonewake's Pickaxe",
     ITEM_QUANTITY = 1,
     
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     STOP_DISTANCE = 5,
 }
 

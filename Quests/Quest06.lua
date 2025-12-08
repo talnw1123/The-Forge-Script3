@@ -20,7 +20,7 @@ local FORGE_CONFIG = {
     ITEM_TYPE = "Armor",
     FORGE_DELAY = 2,
     FORGE_POSITION = Vector3.new(-192.3, 29.5, 168.1),  -- 🆕 Fixed position
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
 }
 
 ----------------------------------------------------------------

@@ -22,7 +22,7 @@ local QUEST_CONFIG = {
     QUEST_NAME = "End of the Beginning",
     NPC_NAME = "Sensei Moro",
     QUEST_OPTION_ARG = "CheckQuest",
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     NPC_STOP_DISTANCE = 5,
 }
 

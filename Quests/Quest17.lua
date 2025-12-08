@@ -31,7 +31,7 @@ local QUEST_CONFIG = {
     
     UNDERGROUND_OFFSET = 4,
     LAYING_ANGLE = 90,
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     
     -- Smooth Movement Settings
     HOLD_POSITION_AFTER_MINE = true,  -- Hold position after mining

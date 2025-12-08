@@ -33,7 +33,7 @@ local QUEST_CONFIG = {
     NPC_NAME = "Bard",
     NPC_POSITION = Vector3.new(-130.9, 27.8, 109.8),
     
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     STOP_DISTANCE = 5,
 }
 

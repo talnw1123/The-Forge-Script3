@@ -597,10 +597,13 @@ local function smoothMoveTo(targetPos, callback)
         print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
     end
 
-    local reachedTarget = false
+    -- Stage 1: Move Y axis first
+    local yReached = false
+    local xzReached = false
+    local currentStage = "Y" -- Start with Y movement
 
     State.moveConn = RunService.Heartbeat:Connect(function()
-        if reachedTarget then return end
+        if yReached and xzReached then return end
 
         -- Check if character or BodyVelocity is destroyed
         if not char or not char.Parent or not hrp or not hrp.Parent then
@@ -633,38 +636,65 @@ local function smoothMoveTo(targetPos, callback)
         end
 
         local currentPos = hrp.Position
-        local direction = (targetPos - currentPos)
-        local distance = direction.Magnitude
 
-        if distance < QUEST_CONFIG.STOP_DISTANCE then
-            if DEBUG_MODE then
-                print(string.format("   ✅ Reached! (%.1f)", distance))
+        -- Stage 1: Move Y (vertical) first
+        if not yReached then
+            local yDiff = targetPos.Y - currentPos.Y
+            local yDistance = math.abs(yDiff)
+
+            if yDistance < QUEST_CONFIG.STOP_DISTANCE then
+                yReached = true
+                currentStage = "XZ"
+                if DEBUG_MODE then
+                    print("   ✅ Y axis reached! Now moving XZ...")
+                end
+            else
+                -- Move only Y axis
+                local yDirection = yDiff > 0 and 1 or -1
+                local ySpeed = math.min(QUEST_CONFIG.MOVE_SPEED, yDistance * 10)
+                local velocity = Vector3.new(0, yDirection * ySpeed, 0)
+
+                bv.Velocity = velocity
+                bg.CFrame = CFrame.lookAt(currentPos, currentPos + Vector3.new(0, yDirection, 0))
             end
+        
+        -- Stage 2: Move XZ (horizontal) after Y is done
+        elseif not xzReached then
+            -- Keep current Y, only move XZ
+            local targetXZ = Vector3.new(targetPos.X, currentPos.Y, targetPos.Z)
+            local directionXZ = (targetXZ - currentPos)
+            local distanceXZ = directionXZ.Magnitude
 
-            reachedTarget = true
+            if distanceXZ < QUEST_CONFIG.STOP_DISTANCE then
+                if DEBUG_MODE then
+                    print(string.format("   ✅ Reached! (%.1f)", distanceXZ))
+                end
 
-            bv.Velocity = Vector3.zero
-            hrp.Velocity = Vector3.zero
-            hrp.AssemblyLinearVelocity = Vector3.zero
+                xzReached = true
 
-            task.wait(0.1)
+                bv.Velocity = Vector3.zero
+                hrp.Velocity = Vector3.zero
+                hrp.AssemblyLinearVelocity = Vector3.zero
 
-            if bv and bv.Parent then bv:Destroy() end
-            if bg and bg.Parent then bg:Destroy() end
-            State.bodyVelocity = nil
-            State.bodyGyro = nil
+                task.wait(0.1)
 
-            if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+                if bv and bv.Parent then bv:Destroy() end
+                if bg and bg.Parent then bg:Destroy() end
+                State.bodyVelocity = nil
+                State.bodyGyro = nil
 
-            if callback then callback() end
-            return
+                if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+
+                if callback then callback() end
+                return
+            else
+                local speedXZ = math.min(QUEST_CONFIG.MOVE_SPEED, distanceXZ * 10)
+                local velocityXZ = directionXZ.Unit * speedXZ
+
+                bv.Velocity = velocityXZ
+                bg.CFrame = CFrame.lookAt(currentPos, targetXZ)
+            end
         end
-
-        local speed = math.min(QUEST_CONFIG.MOVE_SPEED, distance * 10)
-        local velocity = direction.Unit * speed
-
-        bv.Velocity = velocity
-        bg.CFrame = CFrame.lookAt(currentPos, targetPos)
     end)
 
     return true

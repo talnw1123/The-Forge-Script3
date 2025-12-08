@@ -20,7 +20,7 @@ local player = Players.LocalPlayer
 local QUEST_NAME = "Getting Started!"
 local NPC_NAME = "Sensei Moro"
 local QUEST_OPTION_ARG = "GiveIntroduction1"
-local MOVE_SPEED = 25
+local MOVE_SPEED = 50
 
 ----------------------------------------------------------------
 -- STATE MANAGEMENT

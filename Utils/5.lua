@@ -28,7 +28,7 @@ local QUEST_CONFIG = {
     -- Priority 1: Auto Sell (Ores)
     AUTO_SELL_ENABLED = true,
     AUTO_SELL_INTERVAL = 10,
-    AUTO_SELL_NPC_NAME = "Greedy Cey",
+    AUTO_SELL_NPC_NAME = "Greedy Cey",  -- Sell ores (Wu is for weapons/armor)
 
     -- Priority 2: Auto Buy Cobalt Pickaxe (Background)
     AUTO_BUY_ENABLED = true,
@@ -112,13 +112,13 @@ local QUEST_CONFIG = {
 
         -- Required ores to collect before forging
         REQUIRED_ORES = {
-            Diamond = 10,
+            Sapphire = 10,
             Quartz = 10,
             Amethyst = 10,
         },
 
         -- These ores will NOT be sold by Auto Sell
-        PROTECTED_ORES = {"Diamond", "Quartz", "Amethyst"},
+        PROTECTED_ORES = {"Sapphire", "Quartz", "Amethyst"},
 
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
@@ -163,10 +163,14 @@ end
 
 local CharacterService = nil
 local PlayerController = nil
+local ProximityService = nil
+local DialogueService = nil
 
 pcall(function()
     CharacterService = Knit.GetService("CharacterService")
     PlayerController = Knit.GetController("PlayerController")
+    ProximityService = Knit.GetService("ProximityService")
+    DialogueService = Knit.GetService("DialogueService")
 end)
 
 local ToolController = nil
@@ -241,6 +245,8 @@ local MINING_FOLDER_PATH = Workspace:WaitForChild("Rocks")
 
 if PORTAL_RF then print("✅ Portal Remote Ready!") else warn("⚠️ Portal Remote not found") end
 if PlayerController then print("✅ PlayerController Ready!") else warn("⚠️ PlayerController not found") end
+if ProximityService then print("✅ ProximityService Ready!") else warn("⚠️ ProximityService not found") end
+if DialogueService then print("✅ DialogueService Ready!") else warn("⚠️ DialogueService not found") end
 if ToolController then print("✅ ToolController Ready!") else warn("⚠️ ToolController not found") end
 if DIALOGUE_RF then print("✅ Dialogue Remote Ready!") else warn("⚠️ Dialogue Remote not found") end
 if PURCHASE_RF then print("✅ Purchase Remote Ready!") else warn("⚠️ Purchase Remote not found") end
@@ -1141,39 +1147,48 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
 
-    -- Sell using DialogueService
-    -- 1. Open Dialogue with NPC
-    local npcName = QUEST_CONFIG.AUTO_SELL_NPC_NAME or "Greedy Cey"
+    -- Sell Weapons & Armor to Wu (Cobalt Mode)
+    local npcName = "Wu"  -- Must use Wu for weapon/armor selling
     local npc = getProximityNPC(npcName)
     
-    if npc and ProximityDialogueRF then
-        print(string.format("   💬 Opening dialogue with %s...", npcName))
-        local openSuccess = pcall(function()
-            ProximityDialogueRF:InvokeServer(npc)
-        end)
-        if not openSuccess then
-            warn("   ⚠️ Failed to open dialogue (might be too far?)")
-        end
-        task.wait(1)
-    else
-        warn("   ⚠️ NPC not found, skipping open dialogue step")
+    if not npc then
+        warn("   ❌ NPC not found!")
+        return false
     end
     
-    -- 2. Sell using DialogueService
-    local success = false
-    pcall(function()
-        success = DIALOGUE_RF:InvokeServer("SellConfirm", { Basket = basket })
-    end)
-
-    -- 3. Cleanup
-    ForceEndDialogueAndRestore()
+    if not ProximityService or not DialogueService then
+        warn("   ❌ ProximityService or DialogueService not available!")
+        return false
+    end
     
-    if success then
+    -- 1. Open Dialogue with NPC using ForceDialogue
+    print("🔌 Opening dialogue...")
+    local success1 = pcall(function()
+        ProximityService:ForceDialogue(npc, "SellConfirm")
+    end)
+    
+    if not success1 then
+        warn("   ❌ Failed to open dialogue")
+        return false
+    end
+    
+    task.wait(0.2)
+    
+    -- 2. Sell using DialogueService RunCommand
+    print("   💸 Selling items...")
+    local success2 = pcall(function()
+        DialogueService:RunCommand("SellConfirm", { Basket = basket })
+    end)
+    
+    if success2 then
         print("   ✅ Sold all items successfully!")
+        task.wait(0.1)
+        ForceEndDialogueAndRestore()
         return true
     else
-        warn("   ⚠️ Sell may have partially failed")
-        return true -- Continue anyway
+        warn("   ❌ Sell failed")
+        ForceEndDialogueAndRestore()
+        return false
     end
 end
 
@@ -1571,15 +1586,15 @@ local function startForge(oreSelection)
     print("   🔥 Starting Melt Sequence...")
     local success = pcall(function()
         ForgeService:ChangeSequence("Melt", {
-            Object = FORGE_OBJECT,
             Ores = oreSelection,
-            ItemType = "Weapon", -- Explicitly set to Weapon
+            ItemType = "Weapon",
             FastForge = false
         })
     end)
 
     if success then
         print("✅ Forge Melt started!")
+        -- Don't close UI - let the forge hook handle the sequence
         return true
     else
         warn("❌ Forge Melt failed!")

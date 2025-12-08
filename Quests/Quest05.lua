@@ -31,7 +31,7 @@ local QUEST_CONFIG = {
     ZOMBIE_UNDERGROUND_OFFSET = 5,
     ZOMBIE_MAX_DISTANCE = 50,
     LAYING_ANGLE = 90,
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     
     -- 🔥 NEW: Priority Order
     PRIORITY_ORDER = {

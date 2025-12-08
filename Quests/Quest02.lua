@@ -26,7 +26,7 @@ local QUEST_CONFIG = {
     MINING_START_POSITION = Vector3.new(43.203, -3.717, -106.628),
     UNDERGROUND_OFFSET = 4,
     LAYING_ANGLE = 90,
-    MOVE_SPEED = 25,
+    MOVE_SPEED = 50,
     STOP_DISTANCE = 2,
     PRIORITY_ORDER = {
         "Open",
