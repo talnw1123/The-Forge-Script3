@@ -163,10 +163,14 @@ end
 
 local CharacterService = nil
 local PlayerController = nil
+local ProximityService = nil
+local DialogueService = nil
 
 pcall(function()
     CharacterService = Knit.GetService("CharacterService")
     PlayerController = Knit.GetController("PlayerController")
+    ProximityService = Knit.GetService("ProximityService")
+    DialogueService = Knit.GetService("DialogueService")
 end)
 
 local ToolController = nil
@@ -241,6 +245,8 @@ local MINING_FOLDER_PATH = Workspace:WaitForChild("Rocks")
 
 if PORTAL_RF then print("✅ Portal Remote Ready!") else warn("⚠️ Portal Remote not found") end
 if PlayerController then print("✅ PlayerController Ready!") else warn("⚠️ PlayerController not found") end
+if ProximityService then print("✅ ProximityService Ready!") else warn("⚠️ ProximityService not found") end
+if DialogueService then print("✅ DialogueService Ready!") else warn("⚠️ DialogueService not found") end
 if ToolController then print("✅ ToolController Ready!") else warn("⚠️ ToolController not found") end
 if DIALOGUE_RF then print("✅ Dialogue Remote Ready!") else warn("⚠️ Dialogue Remote not found") end
 if PURCHASE_RF then print("✅ Purchase Remote Ready!") else warn("⚠️ Purchase Remote not found") end
@@ -1141,7 +1147,7 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
 
-    -- Sell using DialogueService (Quest04 pattern)
+    -- Sell using Services (Quest04 pattern)
     local npcName = QUEST_CONFIG.AUTO_SELL_NPC_NAME or "Greedy Cey"
     local npc = getProximityNPC(npcName)
     
@@ -1151,11 +1157,12 @@ local function sellAllNonEquippedItems()
     end
     
     if not ProximityService or not DialogueService then
-        warn("   ❌ Services not available!")
+        warn("   ❌ ProximityService or DialogueService not available!")
         return false
     end
     
-    print("   � Opening dialogue...")
+    -- 1. Open Dialogue with NPC using ForceDialogue
+    print("🔌 Opening dialogue...")
     local success1 = pcall(function()
         ProximityService:ForceDialogue(npc, "SellConfirm")
     end)
@@ -1167,6 +1174,7 @@ local function sellAllNonEquippedItems()
     
     task.wait(0.2)
     
+    -- 2. Sell using DialogueService RunCommand
     print("   💸 Selling items...")
     local success2 = pcall(function()
         DialogueService:RunCommand("SellConfirm", { Basket = basket })
@@ -1586,13 +1594,7 @@ local function startForge(oreSelection)
 
     if success then
         print("✅ Forge Melt started!")
-        task.wait(0.5)
-        -- Close Forge UI
-        if UIController and UIController.Close then
-            pcall(function()
-                UIController:Close("Forge")
-            end)
-        end
+        -- Don't close UI - let the forge hook handle the sequence
         return true
     else
         warn("❌ Forge Melt failed!")
