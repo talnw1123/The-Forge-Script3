@@ -112,9 +112,9 @@ local QUEST_CONFIG = {
 
         -- Required ores to collect before forging
         REQUIRED_ORES = {
-            Sapphire = 10,
+            Diamond = 10,
             Quartz = 10,
-            Amethyst = 10,
+            Boneite = 10,
         },
 
         -- These ores will NOT be sold by Auto Sell
@@ -123,7 +123,7 @@ local QUEST_CONFIG = {
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
         FORGE_TYPE = "Weapon",
-        SELL_SHOP_POSITION = Vector3.new(-115.1, 22.3, -92.3), -- Sell items before forge
+        SELL_SHOP_POSITION = Vector3.new(-113.93, 22.3, -94.7), -- Sell items before forge
 
         -- Rare weapon detection (ImageColor3)
         RARE_WEAPON_COLOR = Color3.fromRGB(123, 189, 246),
