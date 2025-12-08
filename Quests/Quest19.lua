@@ -533,7 +533,136 @@ local function ForceEndDialogueAndRestore()
     end
 end
 
+----------------------------------------------------------------
+-- NOCLIP & MOVEMENT
+----------------------------------------------------------------
+local function enableNoclip()
+    if State.noclipConn then return end
+    
+    local char = player.Character
+    if not char then return end
+    
+    State.noclipConn = RunService.Stepped:Connect(function()
+        if not char or not char.Parent then
+            if State.noclipConn then State.noclipConn:Disconnect() State.noclipConn = nil end
+            return
+        end
+        
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    end)
+end
 
+local function disableNoclip()
+    if State.noclipConn then
+        State.noclipConn:Disconnect()
+        State.noclipConn = nil
+    end
+    -- restoreCollisions() -- Not defined in this scope, assuming handled by game or not needed
+end
+
+local function smoothMoveTo(targetPos, callback)
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return false end
+    
+    if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+    if State.bodyVelocity then State.bodyVelocity:Destroy() State.bodyVelocity = nil end
+    if State.bodyGyro then State.bodyGyro:Destroy() State.bodyGyro = nil end
+    
+    enableNoclip()
+    
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Parent = hrp
+    State.bodyVelocity = bv
+    
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P = 10000
+    bg.D = 500
+    bg.Parent = hrp
+    State.bodyGyro = bg
+    
+    if DEBUG_MODE then
+        print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
+    end
+    
+    local reachedTarget = false
+    
+    State.moveConn = RunService.Heartbeat:Connect(function()
+        if reachedTarget then return end
+        
+        -- Check if character or BodyVelocity is destroyed
+        if not char or not char.Parent or not hrp or not hrp.Parent then
+            if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+            if bv and bv.Parent then bv:Destroy() end
+            if bg and bg.Parent then bg:Destroy() end
+            State.bodyVelocity = nil
+            State.bodyGyro = nil
+            return
+        end
+        
+        -- Check if BodyVelocity was destroyed by game/other script
+        if not bv or not bv.Parent then
+            warn("   ⚠️ BodyVelocity destroyed! Recreating...")
+            
+            -- Recreate BodyVelocity
+            bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Parent = hrp
+            State.bodyVelocity = bv
+        end
+        
+        if not bg or not bg.Parent then
+            bg = Instance.new("BodyGyro")
+            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bg.P = 10000
+            bg.D = 500
+            bg.Parent = hrp
+            State.bodyGyro = bg
+        end
+        
+        local currentPos = hrp.Position
+        local direction = (targetPos - currentPos)
+        local distance = direction.Magnitude
+        
+        if distance < QUEST_CONFIG.STOP_DISTANCE then
+            if DEBUG_MODE then
+                print(string.format("   ✅ Reached! (%.1f)", distance))
+            end
+            
+            reachedTarget = true
+            
+            bv.Velocity = Vector3.zero
+            hrp.Velocity = Vector3.zero
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            
+            task.wait(0.1)
+            
+            if bv and bv.Parent then bv:Destroy() end
+            if bg and bg.Parent then bg:Destroy() end
+            State.bodyVelocity = nil
+            State.bodyGyro = nil
+            
+            if State.moveConn then State.moveConn:Disconnect() State.moveConn = nil end
+            
+            if callback then callback() end
+            return
+        end
+        
+        local speed = math.min(QUEST_CONFIG.MOVE_SPEED, distance * 10)
+        local velocity = direction.Unit * speed
+        
+        bv.Velocity = velocity
+        bg.CFrame = CFrame.lookAt(currentPos, targetPos)
+    end)
+    
+    return true
+end
 
 ----------------------------------------------------------------
 -- AUTO SELL SYSTEM
@@ -610,7 +739,7 @@ local function initAutoSellWithNPC()
     print("   🚶 Moving to NPC...")
     
     local done = false
-    Shared.smoothMoveTo(npcPos, 2, 50, function() done = true end)
+    smoothMoveTo(npcPos, function() done = true end)
     
     local t0 = tick()
     while not done and tick() - t0 < 30 do
@@ -1392,7 +1521,7 @@ local function moveToForge()
         forgePos.X, forgePos.Y, forgePos.Z, distance))
     
     local done = false
-    Shared.smoothMoveTo(forgePos, 2, 50, function() done = true end)
+    smoothMoveTo(forgePos, function() done = true end)
     
     local t0 = tick()
     while not done and tick() - t0 < 60 do
@@ -1440,6 +1569,377 @@ local function startForge(oreSelection)
     print("   🔥 Starting Melt Sequence...")
     local success = pcall(function()
         ForgeService:ChangeSequence("Melt", {
+            Object = FORGE_OBJECT,
+            Ores = oreSelection,
+            ItemType = "Weapon", -- Explicitly set to Weapon
+            FastForge = false
+        })
+    end)
+    
+    if success then
+        print("✅ Forge Melt started!")
+        return true
+    else
+        warn("❌ Forge Melt failed!")
+        return false
+    end
+end
+
+----------------------------------------------------------------
+-- COBALT MODE: RARE WEAPON DETECTION
+----------------------------------------------------------------
+local function openToolsMenu()
+    if not UIController then return false end
+    
+    if UIController.Modules["Menu"] then
+        pcall(function() UIController:Open("Menu") end)
+        task.wait(0.5)
+        
+        local menuModule = UIController.Modules["Menu"]
+        if menuModule.OpenTab then
+            pcall(function() menuModule:OpenTab("Tools") end)
+        elseif menuModule.SwitchTab then
+            pcall(function() menuModule:SwitchTab("Tools") end)
+        end
+        
+        task.wait(0.5)
+        return true
+    end
+    
+    return false
+end
+
+local function closeToolsMenu()
+    if UIController and UIController.Close then
+        pcall(function() UIController:Close("Menu") end)
+        task.wait(0.3)
+    end
+end
+
+local function findRareWeaponByColor()
+    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
+    local targetColor = config.RARE_WEAPON_COLOR
+    local tolerance = config.COLOR_TOLERANCE or 5
+    
+    print("🔍 Searching for Rare Weapon (Color: 123, 189, 246)...")
+    
+    -- Open Tools menu to check items
+    openToolsMenu()
+    task.wait(0.5)
+    
+    local toolsFrame = playerGui:FindFirstChild("Menu")
+        and playerGui.Menu:FindFirstChild("Frame")
+        and playerGui.Menu.Frame:FindFirstChild("Frame")
+        and playerGui.Menu.Frame.Frame:FindFirstChild("Menus")
+        and playerGui.Menu.Frame.Frame.Menus:FindFirstChild("Tools")
+        and playerGui.Menu.Frame.Frame.Menus.Tools:FindFirstChild("Frame")
+    
+    if not toolsFrame then
+        warn("   ❌ Tools Frame not found!")
+        closeToolsMenu()
+        return nil
+    end
+    
+    for _, child in ipairs(toolsFrame:GetChildren()) do
+        if child:IsA("GuiObject") then
+            -- Skip Pickaxe
+            if string.find(child.Name, "Pickaxe") then continue end
+            
+            local glowImage = child:FindFirstChild("GlowImage")
+            if glowImage and glowImage:IsA("ImageLabel") then
+                local color = glowImage.ImageColor3
+                local r, g, b = color.R * 255, color.G * 255, color.B * 255
+                
+                -- Compare colors with tolerance
+                if math.abs(r - 123) < tolerance 
+                    and math.abs(g - 189) < tolerance 
+                    and math.abs(b - 246) < tolerance then
+                    
+                    print(string.format("   🌟 RARE WEAPON FOUND! GUID: %s (Color: %.0f, %.0f, %.0f)", 
+                        child.Name, r, g, b))
+                    closeToolsMenu()
+                    return child.Name -- GUID
+                end
+            end
+        end
+    end
+    
+    print("   ⚠️ No rare weapon found")
+    closeToolsMenu()
+    return nil
+end
+
+local function equipWeaponByGUID(guid)
+    print(string.format("⚡ Equipping weapon: %s", guid))
+    
+    if not PlayerController or not PlayerController.Replica then
+        warn("   ❌ PlayerController not available!")
+        return false
+    end
+    
+    local replica = PlayerController.Replica
+    if not replica.Data or not replica.Data.Inventory or not replica.Data.Inventory.Equipments then
+        warn("   ❌ Equipments not found!")
+        return false
+    end
+    
+    local equipments = replica.Data.Inventory.Equipments
+    
+    for id, item in pairs(equipments) do
+        if type(item) == "table" and item.GUID == guid then
+            print(string.format("   📦 Found item: %s (%s)", item.Type or "Unknown", guid))
+            
+            local success = pcall(function()
+                CHAR_RF:InvokeServer(item)
+            end)
+            
+            if success then
+                print("   ✅ Weapon equipped!")
+                return true
+            else
+                warn("   ❌ Failed to equip weapon!")
+                return false
+            end
+        end
+    end
+    
+    warn("   ❌ Item not found in inventory!")
+    return false
+end
+
+----------------------------------------------------------------
+-- COBALT MODE: MONSTER KILLING SYSTEM
+----------------------------------------------------------------
+local function getMonsterUndergroundPosition(monsterModel)
+    if not monsterModel or not monsterModel.Parent then return nil end
+    
+    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
+    local offset = config.MONSTER_UNDERGROUND_OFFSET or 3
+    
+    local hrp = monsterModel:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local pos = hrp.Position
+        return Vector3.new(pos.X, pos.Y - offset, pos.Z)
+    end
+    
+    return nil
+end
+
+local function getMonsterHP(monster)
+    if not monster or not monster.Parent then return 0 end
+    local humanoid = monster:FindFirstChild("Humanoid")
+    if humanoid then
+        return humanoid.Health or 0
+    end
+    return 0
+end
+
+local function isMonsterValid(monster)
+    if not monster or not monster.Parent then return false end
+    return getMonsterHP(monster) > 0
+end
+
+local function findNearestMonster()
+    if not LIVING_FOLDER then return nil end
+    
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    
+    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
+    local patterns = config.MONSTER_PATTERNS
+    local maxDist = config.MONSTER_MAX_DISTANCE or 50
+    
+    local targetMonster, minDist = nil, math.huge
+    
+    for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
+        for _, pattern in ipairs(patterns) do
+            if string.match(child.Name, pattern) then
+                if isMonsterValid(child) then
+                    local monsterHRP = child:FindFirstChild("HumanoidRootPart")
+                    if monsterHRP then
+                        local dist = (monsterHRP.Position - hrp.Position).Magnitude
+                        if dist < minDist and dist < maxDist then
+                            minDist = dist
+                            targetMonster = child
+                        end
+                    end
+                end
+                break
+            end
+        end
+    end
+    
+    return targetMonster, minDist
+end
+
+local function watchMonsterHP(monster)
+    if State.hpWatchConn then State.hpWatchConn:Disconnect() end
+    if not monster then return end
+    
+    local humanoid = monster:FindFirstChild("Humanoid")
+    if not humanoid then return end
+    
+    State.hpWatchConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
+        local hp = humanoid.Health or 0
+        if hp <= 0 then
+            print("   ✅ Monster killed!")
+            State.targetDestroyed = true
+            if ToolController then ToolController.holdingM1 = false end
+        end
+    end)
+end
+
+local function lockPositionFollowMonster(targetMonster)
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp or not targetMonster then return end
+    
+    if State.positionLockConn then
+        State.positionLockConn:Disconnect()
+        State.positionLockConn = nil
+    end
+    
+    local angle = math.rad(QUEST_CONFIG.LAYING_ANGLE)
+    
+    State.positionLockConn = RunService.Heartbeat:Connect(function()
+        if not char or not char.Parent or not hrp or not hrp.Parent then
+            if State.positionLockConn then
+                State.positionLockConn:Disconnect()
+                State.positionLockConn = nil
+            end
+            return
+        end
+        
+        if not targetMonster or not targetMonster.Parent then
+            if State.positionLockConn then
+                State.positionLockConn:Disconnect()
+                State.positionLockConn = nil
+            end
+            return
+        end
+        
+        local targetPos = getMonsterUndergroundPosition(targetMonster)
+        if targetPos then
+            local baseCFrame = CFrame.new(targetPos)
+            local layingCFrame = baseCFrame * CFrame.Angles(angle, 0, 0)
+            
+            hrp.CFrame = layingCFrame
+            hrp.Velocity = Vector3.zero
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+    end)
+    
+    print("   🔒 Following monster...")
+end
+
+local function doKillMonsters()
+    print("\n" .. string.rep("=", 60))
+    print("⚔️ COBALT MODE: MONSTER KILLING")
+    print(string.rep("=", 60))
+    
+    IsKillingActive = true
+    enableNoclip()
+    
+    while Quest19Active and not State.isPaused do
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if not hrp then
+            warn("   ⚠️ Waiting for character...")
+            task.wait(2)
+            continue
+        end
+        
+        -- Find nearest monster
+        local targetMonster, dist = findNearestMonster()
+        
+        if not targetMonster then
+            print("   ⏳ No monsters found, waiting...")
+            unlockPosition()
+            task.wait(3)
+            continue
+        end
+        
+        State.currentTarget = targetMonster
+        State.targetDestroyed = false
+        
+        local targetPos = getMonsterUndergroundPosition(targetMonster)
+        if not targetPos then
+            warn("   ❌ Cannot get monster position!")
+            task.wait(1)
+            continue
+        end
+        
+        local currentHP = getMonsterHP(targetMonster)
+        print(string.format("   🎯 Target: %s (HP: %.0f, Dist: %.0f)", 
+            targetMonster.Name, currentHP, dist))
+        
+        -- Move to monster and lock position
+        watchMonsterHP(targetMonster)
+        
+        local moveComplete = false
+        smoothMoveTo(targetPos, function()
+            lockPositionFollowMonster(targetMonster)
+            moveComplete = true
+        end)
+        
+        local t0 = tick()
+        while not moveComplete and tick() - t0 < 30 do
+            task.wait(0.1)
+        end
+        
+        if not moveComplete then
+            warn("   ⚠️ Move timeout, skip monster")
+            State.targetDestroyed = true
+            continue
+        end
+        
+        task.wait(0.3)
+        
+        -- Attack loop
+        while not State.targetDestroyed and Quest19Active and not State.isPaused do
+            if not char or not char.Parent then break end
+            
+            if not targetMonster or not targetMonster.Parent or not isMonsterValid(targetMonster) then
+                State.targetDestroyed = true
+                break
+            end
+            
+            -- Check if monster too far
+            local currentMonsterPos = getMonsterUndergroundPosition(targetMonster)
+            if currentMonsterPos and hrp then
+                local distToMonster = (currentMonsterPos - hrp.Position).Magnitude
+                if distToMonster > QUEST_CONFIG.COBALT_MODE_CONFIG.MONSTER_MAX_DISTANCE then
+                    print("   ⚠️ Monster moved too far! Switching target...")
+                    State.targetDestroyed = true
+                    break
+                end
+            end
+            
+            -- Equip and attack with weapon
+            local toolInHand = char:FindFirstChildWhichIsA("Tool")
+            local isWeaponHeld = toolInHand and not string.find(toolInHand.Name, "Pickaxe")
+            
+            if not isWeaponHeld then
+                if ToolController then ToolController.holdingM1 = false end
+                
+                -- Find and equip weapon from hotbar
+                local key, weaponName = findWeaponSlotKey()
+                if key then
+                    pressKey(key)
+                    task.wait(0.3)
+                else
+                    -- Try to equip rare weapon
+                    if State.rareWeaponGUID then
+                        equipWeaponByGUID(State.rareWeaponGUID)
+                        task.wait(0.5)
+                    end
+                end
+            else
+                -- Attack
+                if ToolController and ToolActivatedFunc then
+                    ToolController.holdingM1 = true
                     pcall(function()
                         ToolActivatedFunc(ToolController, toolInHand)
                     end)
@@ -1508,7 +2008,7 @@ local function doCobaltModeRoutine()
     local sellShopPos = config.SELL_SHOP_POSITION
     
     local done = false
-    Shared.smoothMoveTo(sellShopPos, 2, 50, function() done = true end)
+    smoothMoveTo(sellShopPos, function() done = true end)
     
     local t0 = tick()
     while not done and tick() - t0 < 30 do
@@ -1604,7 +2104,29 @@ local function doCobaltModeRoutine()
     return false
 end
 
-
+----------------------------------------------------------------
+-- HELPER: Find Weapon Slot Key
+----------------------------------------------------------------
+local function findWeaponSlotKey()
+    local gui = player:FindFirstChild("PlayerGui")
+    if not gui then return nil, nil end
+    
+    local hotbar = gui:FindFirstChild("BackpackGui") 
+                   and gui.BackpackGui:FindFirstChild("Backpack") 
+                   and gui.BackpackGui.Backpack:FindFirstChild("Hotbar")
+    
+    if hotbar then
+        for _, slotFrame in ipairs(hotbar:GetChildren()) do
+            local frame = slotFrame:FindFirstChild("Frame")
+            local label = frame and frame:FindFirstChild("ToolName")
+            if label and label:IsA("TextLabel") and not string.find(label.Text, "Pickaxe") and label.Text ~= "" then
+                return HOTKEY_MAP[slotFrame.Name], label.Text
+            end
+        end
+    end
+    
+    return nil, nil
+end
 
 ----------------------------------------------------------------
 -- ISLAND DETECTION
@@ -1754,17 +2276,54 @@ end
 ----------------------------------------------------------------
 -- POSITION LOCK
 ----------------------------------------------------------------
+local function lockPositionLayingDown(targetPos)
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    
+    if State.positionLockConn then
+        State.positionLockConn:Disconnect()
+        State.positionLockConn = nil
+    end
+    
+    local angle = math.rad(QUEST_CONFIG.LAYING_ANGLE)
+    local baseCFrame = CFrame.new(targetPos)
+    local layingCFrame = baseCFrame * CFrame.Angles(angle, 0, 0)
+    
+    State.positionLockConn = RunService.Heartbeat:Connect(function()
+        if not char or not char.Parent or not hrp or not hrp.Parent then
+            if State.positionLockConn then
+                State.positionLockConn:Disconnect()
+                State.positionLockConn = nil
+            end
+            return
+        end
+        
+        hrp.CFrame = layingCFrame
+        hrp.Velocity = Vector3.zero
+        hrp.AssemblyLinearVelocity = Vector3.zero
+    end)
+    
+    if DEBUG_MODE then
+        print("   🔒 Position locked")
+    end
+end
+
 local function transitionToNewTarget(newTargetPos)
-    Shared.unlockPosition()
+    if State.positionLockConn then
+        State.positionLockConn:Disconnect()
+        State.positionLockConn = nil
+    end
     
     local moveComplete = false
-    Shared.smoothMoveTo(newTargetPos, 2, 50, function()
-        Shared.lockPositionLayingDown(newTargetPos, QUEST_CONFIG.LAYING_ANGLE)
+    smoothMoveTo(newTargetPos, function()
+        lockPositionLayingDown(newTargetPos)
         moveComplete = true
     end)
     
-    local t0 = tick()
-    while not moveComplete and tick() - t0 < 10 do
+    local timeout = 60
+    local startTime = tick()
+    while not moveComplete and tick() - startTime < timeout do
         task.wait(0.1)
     end
     
