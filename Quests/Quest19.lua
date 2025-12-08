@@ -59,7 +59,7 @@ local QUEST_CONFIG = {
     ROCK_NAME = "Basalt Rock",
     UNDERGROUND_OFFSET = 4,
     LAYING_ANGLE = 90,
-    MOVE_SPEED = 25,  
+    MOVE_SPEED = 50,  
     STOP_DISTANCE = 2,
     
     MINING_PATHS = {
