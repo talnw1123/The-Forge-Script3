@@ -118,7 +118,7 @@ local QUEST_CONFIG = {
         },
 
         -- These ores will NOT be sold by Auto Sell
-        PROTECTED_ORES = {"Sapphire", "Quartz", "Amethyst"},
+        PROTECTED_ORES = {"Diamond", "Quartz", "Boneite"},
 
         -- Forge settings
         FORGE_POSITION = Vector3.new(13.5, 25.0, -70.8),
@@ -1182,9 +1182,39 @@ local function sellAllNonEquippedItems()
     local npc = getProximityNPC(npcName)
     
     if not npc then
-        warn("   ❌ NPC not found!")
+        warn("   ❌ NPC Wu not found in Workspace!")
         return false
     end
+    
+    -- Get NPC position
+    local npcHRP = npc:FindFirstChild("HumanoidRootPart")
+    if not npcHRP then
+        warn("   ❌ NPC Wu has no HumanoidRootPart!")
+        return false
+    end
+    
+    local npcPos = npcHRP.Position
+    
+    -- Move to NPC Wu (like Quest4 does with Marbles)
+    print(string.format("   🚶 Moving to NPC %s at (%.1f, %.1f, %.1f)...", npcName, npcPos.X, npcPos.Y, npcPos.Z))
+    
+    local done = false
+    Shared.smoothMoveTo(npcPos, 2, 25, function()
+        done = true
+    end)
+    
+    local t0 = tick()
+    while not done and tick() - t0 < 30 do
+        task.wait(0.1)
+    end
+    
+    if not done then
+        warn("   ❌ Failed to reach NPC Wu!")
+        return false
+    end
+    
+    print(string.format("   ✅ Reached NPC %s!", npcName))
+    task.wait(1)
     
     if not ProximityService or not DialogueService then
         warn("   ❌ ProximityService or DialogueService not available!")
@@ -1192,7 +1222,7 @@ local function sellAllNonEquippedItems()
     end
     
     -- 1. Open Dialogue with NPC using ForceDialogue
-    print("🔌 Opening dialogue...")
+    print("   🔌 Opening dialogue...")
     local success1 = pcall(function()
         ProximityService:ForceDialogue(npc, "SellConfirm")
     end)
