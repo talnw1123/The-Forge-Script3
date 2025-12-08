@@ -1135,11 +1135,31 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
     
-    -- Sell using DialogueService
+    -- 1. Open Dialogue with NPC
+    local npcName = QUEST_CONFIG.AUTO_SELL_NPC_NAME or "Greedy Cey"
+    local npc = getProximityNPC(npcName)
+    
+    if npc and ProximityDialogueRF then
+        print(string.format("   💬 Opening dialogue with %s...", npcName))
+        local openSuccess = pcall(function()
+            ProximityDialogueRF:InvokeServer(npc)
+        end)
+        if not openSuccess then
+            warn("   ⚠️ Failed to open dialogue (might be too far?)")
+        end
+        task.wait(1)
+    else
+        warn("   ⚠️ NPC not found, skipping open dialogue step")
+    end
+    
+    -- 2. Sell using DialogueService
     local success = false
     pcall(function()
         success = DIALOGUE_RF:InvokeServer("SellConfirm", { Basket = basket })
     end)
+    
+    -- 3. Cleanup
+    ForceEndDialogueAndRestore()
     
     if success then
         print("   ✅ Sold all items successfully!")
@@ -1455,6 +1475,38 @@ local function setupForgeHook()
     print("✅ Forge Hook installed!")
 end
 
+local function getProximityNPC(name)
+    local proximity = Workspace:FindFirstChild("Proximity")
+    if not proximity then return nil end
+    return proximity:FindFirstChild(name)
+end
+
+local function closeForgeUI()
+    print("   🚪 Closing Forge UI...")
+    
+    if UIController and UIController.Close then
+        pcall(function()
+            if UIController.Modules and UIController.Modules["Forge"] then
+                UIController:Close("Forge")
+            end
+        end)
+    end
+    
+    if ForgeController then
+        pcall(function()
+            if ForgeController.Close then ForgeController:Close()
+            elseif ForgeController.CloseForge then ForgeController:CloseForge() end
+        end)
+    end
+    
+    pcall(function()
+        local forgeGui = playerGui:FindFirstChild("Forge") or playerGui:FindFirstChild("ForgeUI")
+        if forgeGui then forgeGui.Enabled = false end
+    end)
+    
+    task.wait(0.5)
+end
+
 local function moveToForge()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     local forgePos = config.FORGE_POSITION
@@ -1499,10 +1551,27 @@ local function startForge(oreSelection)
     
     if not ForgeService then return false end
     
+    -- 1. Invoke Proximity (Server interaction)
+    print("   🔌 Invoking Forge Proximity...")
+    local proxSuccess = pcall(function()
+        PROXIMITY_RF:InvokeServer(FORGE_OBJECT)
+    end)
+    
+    if not proxSuccess then
+        warn("   ❌ Failed to invoke Forge remote (Proximity)")
+        return false
+    end
+    
+    -- 2. Wait for UI/Server
+    task.wait(1.5)
+    
+    -- 3. Start Client Sequence
+    print("   🔥 Starting Melt Sequence...")
     local success = pcall(function()
         ForgeService:ChangeSequence("Melt", {
             Object = FORGE_OBJECT,
             Ores = oreSelection,
+            ItemType = "Weapon", -- Explicitly set to Weapon
             FastForge = false
         })
     end)
@@ -1995,6 +2064,9 @@ local function doCobaltModeRoutine()
         if forgeSuccess then
             print("   ⏳ Waiting for forge to complete (27 seconds)...")
             task.wait(27)
+            
+            -- Close Forge UI before checking inventory
+            closeForgeUI()
         else
             warn("   ❌ Forge failed, retrying...")
             task.wait(3)
