@@ -2066,7 +2066,7 @@ local function doKillMonsters()
                 print("   ✅ Monster killed (HP: 0)! Switching to next target...")
                 State.targetDestroyed = true
                 if ToolController then ToolController.holdingM1 = false end
-                unlockPosition()
+                -- ❌ Don't unlock here - will move directly to next target
                 break
             end
 
@@ -2114,18 +2114,23 @@ local function doKillMonsters()
                 end
             end
 
-            task.wait(0.4) -- Faster attack rate
+            task.wait(0.4)
         end
 
-        -- Quick cleanup and find next target
-        unlockPosition()
+        -- ✅ Don't unlock between monsters - smoothMoveTo will handle transition
+        -- Just disconnect the position lock connection, smoothMoveTo will create new one
+        if State.positionLockConn then
+            State.positionLockConn:Disconnect()
+            State.positionLockConn = nil
+        end
+        
         print("   🔄 Finding next monster...")
-        task.wait(0.2) -- Reduced wait time for smoother farming
+        task.wait(0.1) -- Minimal wait - move to next target immediately
     end
 
     print("\n⚔️ Monster killing ended")
     IsKillingActive = false
-    unlockPosition()
+    unlockPosition() -- Only unlock when completely done
     disableNoclip()
 end
 
