@@ -2036,7 +2036,7 @@ local function doKillMonsters()
 end
 
 ----------------------------------------------------------------
--- COBALT MODE: MAIN ROUTINE (Priority: Check Rare Weapon FIRST)
+-- COBALT MODE: MAIN ROUTINE
 ----------------------------------------------------------------
 local function doCobaltModeRoutine()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
@@ -2047,46 +2047,17 @@ local function doCobaltModeRoutine()
         return false
     end
 
-    print("\n" .. string.rep("=", 60))
-    print("🎯 COBALT MODE: Checking for Rare Weapon...")
-    print(string.rep("=", 60))
+    -- Check ore requirements
+    local oreStatus, allComplete = getRequiredOreCount()
 
-    -- ⭐ PRIORITY 1: Check if we already have Rare Weapon
-    print("\n🔍 Step 1: Checking inventory for Rare Weapon...")
-    local existingRareGUID = findRareWeaponByColor()
-
-    if existingRareGUID then
-        print("\n🌟 RARE WEAPON FOUND IN INVENTORY!")
-        State.rareWeaponFound = true
-        State.rareWeaponGUID = existingRareGUID
-
-        -- Equip and go kill monsters immediately!
-        print("\n⚡ Equipping Rare Weapon...")
-        equipWeaponByGUID(existingRareGUID)
-        task.wait(1)
-
-        print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
-        State.isPaused = false
-        State.cobaltModeActive = false
-        doKillMonsters()
-        return true
+    if not allComplete then
+        return false -- Continue mining
     end
 
-    print("   ⚠️ No Rare Weapon found, need to forge...")
-
-    -- ⭐ PRIORITY 2: Check if we have enough ores to forge
-    local oreStatus, haveOres = getRequiredOreCount()
+    print("\n" .. string.rep("=", 60))
+    print("🎯 COBALT MODE: ALL ORES COLLECTED!")
+    print(string.rep("=", 60))
     printOreStatus()
-
-    if not haveOres then
-        print("\n⛏️ Not enough ores! Need to mine more...")
-        return false -- Go back to mining
-    end
-
-    -- We have ores! Start forge sequence
-    print("\n" .. string.rep("=", 60))
-    print("🔨 COBALT MODE: Starting Forge Sequence...")
-    print(string.rep("=", 60))
 
     State.cobaltModeActive = true
 
@@ -2105,7 +2076,7 @@ local function doCobaltModeRoutine()
     end
 
     -- 2. Sell all non-equipped items first
-    print("\n📦 Step 2: Selling non-equipped items...")
+    print("\n📦 Step 1: Selling non-equipped items...")
     local sellShopPos = config.SELL_SHOP_POSITION
 
     local done = false
@@ -2125,69 +2096,89 @@ local function doCobaltModeRoutine()
         warn("   ⚠️ Failed to reach sell shop, continuing...")
     end
 
-    -- 3. Move to Forge
-    print("\n⚒️ Step 3: Moving to Forge...")
-    setupForgeHook()
+    -- Forge loop until rare weapon found
+    local forgeAttempts = 0
+    local maxForgeAttempts = 10
 
-    if not moveToForge() then
-        warn("   ⚠️ Failed to reach Forge!")
-        State.isPaused = false
-        State.cobaltModeActive = false
-        return false
+    while Quest19Active and not State.rareWeaponFound and forgeAttempts < maxForgeAttempts do
+        forgeAttempts = forgeAttempts + 1
+        print(string.format("\n🔨 Forge Attempt #%d", forgeAttempts))
+
+        -- Check if we have enough ores
+        local _, haveOres = getRequiredOreCount()
+
+        if not haveOres then
+            print("   ⛏️ Need more ores! Returning to mining...")
+            State.isPaused = false
+            State.cobaltModeActive = false
+            return false -- Go back to mining
+        end
+
+        -- 3. Move to Forge
+        print("\n⚒️ Step 2: Moving to Forge...")
+        setupForgeHook()
+
+        if not moveToForge() then
+            warn("   ⚠️ Failed to reach Forge!")
+            task.wait(3)
+            continue
+        end
+
+        -- 4. Forge with specific ores
+        State.forgeComplete = false
+        local oreSelection = {}
+        for oreName, count in pairs(config.REQUIRED_ORES) do
+            oreSelection[oreName] = count
+        end
+
+        local forgeSuccess = startForge(oreSelection)
+
+        if forgeSuccess then
+            print("   ⏳ Waiting for forge to complete (27 seconds)...")
+            task.wait(27)
+            
+            -- Close Forge UI before checking inventory
+            closeForgeUI()
+        else
+            warn("   ❌ Forge failed, retrying...")
+            task.wait(3)
+            continue
+        end
+
+        task.wait(2)
+
+        -- 5. Check for rare weapon
+        print("\n🔍 Step 3: Checking for Rare Weapon...")
+        local rareGUID = findRareWeaponByColor()
+
+        if rareGUID then
+            State.rareWeaponFound = true
+            State.rareWeaponGUID = rareGUID
+
+            -- 6. Equip rare weapon
+            print("\n⚡ Step 4: Equipping Rare Weapon...")
+            equipWeaponByGUID(rareGUID)
+            task.wait(1)
+
+            -- 7. Switch to Monster Killing mode
+            print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
+            
+            -- Reset paused state so monster killing can work
+            State.isPaused = false
+            State.cobaltModeActive = false
+            
+            doKillMonsters()
+            return true
+        else
+            print("   🔄 No rare weapon, will try again if have ores...")
+        end
     end
 
-    -- 4. Forge with specific ores
-    State.forgeComplete = false
-    local oreSelection = {}
-    for oreName, count in pairs(config.REQUIRED_ORES) do
-        oreSelection[oreName] = count
-    end
-
-    local forgeSuccess = startForge(oreSelection)
-
-    if forgeSuccess then
-        print("   ⏳ Waiting for forge to complete (27 seconds)...")
-        task.wait(27)
-        
-        -- Close Forge UI before checking inventory
-        closeForgeUI()
-    else
-        warn("   ❌ Forge failed!")
-        State.isPaused = false
-        State.cobaltModeActive = false
-        return false
-    end
-
-    task.wait(2)
-
-    -- 5. Check for rare weapon after forging
-    print("\n🔍 Step 4: Checking for Rare Weapon after forge...")
-    local rareGUID = findRareWeaponByColor()
-
-    if rareGUID then
-        State.rareWeaponFound = true
-        State.rareWeaponGUID = rareGUID
-
-        -- 6. Equip rare weapon
-        print("\n⚡ Step 5: Equipping Rare Weapon...")
-        equipWeaponByGUID(rareGUID)
-        task.wait(1)
-
-        -- 7. Switch to Monster Killing mode
-        print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
-        
-        -- Reset paused state so monster killing can work
-        State.isPaused = false
-        State.cobaltModeActive = false
-        
-        doKillMonsters()
-        return true
-    else
-        print("   🔄 No rare weapon from this forge, need more ores...")
-        State.isPaused = false
-        State.cobaltModeActive = false
-        return false -- Go back to mining for more ores
-    end
+    -- If we get here, either ran out of attempts or ores
+    print("\n⚠️ Cobalt Mode: Max attempts reached or out of ores")
+    State.isPaused = false
+    State.cobaltModeActive = false
+    return false
 end
 
 ----------------------------------------------------------------
@@ -2635,15 +2626,19 @@ local function doMineBasaltRock()
             continue
         end
 
-        -- 🎯 COBALT MODE: Check for Rare Weapon or Forge if have ores
+        -- 🎯 COBALT MODE: Check if ores are collected
         if hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
-            -- This now checks: 1) Rare Weapon exists? 2) Have ores to forge? 3) Otherwise continue mining
-            local success = doCobaltModeRoutine()
-            if success then
-                -- Cobalt Mode completed (rare weapon found, now killing monsters)
-                break
+            local _, allOresCollected = getRequiredOreCount()
+            if allOresCollected then
+                print("\n🎯 Cobalt Mode: All ores collected! Starting Forge sequence...")
+                local success = doCobaltModeRoutine()
+                if success then
+                    -- Cobalt Mode completed (rare weapon found, now killing monsters)
+                    -- This returns true when doKillMonsters is running/done
+                    break
+                end
+                -- If not successful, continue mining for more ores
             end
-            -- If not successful (no rare weapon, no ores), continue mining
         end
 
         local char = player.Character
