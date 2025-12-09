@@ -2162,6 +2162,11 @@ local function doCobaltModeRoutine()
 
             -- 7. Switch to Monster Killing mode
             print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
+            
+            -- Reset paused state so monster killing can work
+            State.isPaused = false
+            State.cobaltModeActive = false
+            
             doKillMonsters()
             return true
         else
