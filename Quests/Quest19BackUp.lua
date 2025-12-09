@@ -136,7 +136,7 @@ local QUEST_CONFIG = {
             "^Deathaxe Skeleton%d+$",
             "^Skeleton Rogue%d+$",
         },
-        MONSTER_UNDERGROUND_OFFSET = 6,
+        MONSTER_UNDERGROUND_OFFSET = 8,
         MONSTER_MAX_DISTANCE = 50,
     },
 
@@ -488,6 +488,50 @@ local function isOreProtected(oreName)
     end
 
     return false
+end
+
+----------------------------------------------------------------
+-- HOTKEY HELPER (for weapon/pickaxe equipping)
+----------------------------------------------------------------
+local HOTKEY_MAP = {
+    ["1"] = Enum.KeyCode.One,
+    ["2"] = Enum.KeyCode.Two,
+    ["3"] = Enum.KeyCode.Three,
+    ["4"] = Enum.KeyCode.Four,
+    ["5"] = Enum.KeyCode.Five,
+    ["6"] = Enum.KeyCode.Six,
+    ["7"] = Enum.KeyCode.Seven,
+    ["8"] = Enum.KeyCode.Eight,
+    ["9"] = Enum.KeyCode.Nine,
+    ["0"] = Enum.KeyCode.Zero
+}
+
+local function pressKey(keyCode)
+    if not keyCode then return end
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+local function findWeaponSlotKey()
+    local gui = player:FindFirstChild("PlayerGui")
+    if not gui then return nil, nil end
+    
+    local hotbar = gui:FindFirstChild("BackpackGui") 
+        and gui.BackpackGui:FindFirstChild("Backpack") 
+        and gui.BackpackGui.Backpack:FindFirstChild("Hotbar")
+    
+    if hotbar then
+        for _, slotFrame in ipairs(hotbar:GetChildren()) do
+            local frame = slotFrame:FindFirstChild("Frame")
+            local label = frame and frame:FindFirstChild("ToolName")
+            if label and label:IsA("TextLabel") and not string.find(label.Text, "Pickaxe") and label.Text ~= "" then
+                return HOTKEY_MAP[slotFrame.Name], label.Text
+            end
+        end
+    end
+    
+    return nil, nil
 end
 
 ----------------------------------------------------------------
@@ -1744,6 +1788,18 @@ end
 local function equipWeaponByGUID(guid)
     print(string.format("⚡ Equipping weapon: %s", guid))
 
+    -- ✅ Check if weapon is already equipped (prevents unequipping bug)
+    openToolsMenu()
+    task.wait(0.3)
+    
+    local alreadyEquipped = isItemEquippedFromUI(guid)
+    closeToolsMenu()
+    
+    if alreadyEquipped then
+        print("   ✅ Weapon is already equipped! (skipping remote call)")
+        return true
+    end
+
     if not PlayerController or not PlayerController.Replica then
         warn("   ❌ PlayerController not available!")
         return false
@@ -1812,26 +1868,43 @@ local function isMonsterValid(monster)
 end
 
 local function findNearestMonster()
-    if not LIVING_FOLDER then return nil end
+    if not LIVING_FOLDER then 
+        warn("   ❌ LIVING_FOLDER is nil!")
+        return nil 
+    end
 
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
-    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
-    local patterns = config.MONSTER_PATTERNS
-    local maxDist = config.MONSTER_MAX_DISTANCE or 50
+    -- Monster name prefixes to look for (without numbers)
+    local monsterPrefixes = {
+        "Axe Skeleton",
+        "Bomber",
+        "Deathaxe Skeleton",
+        "Skeleton Rogue",
+    }
 
     local targetMonster, minDist = nil, math.huge
+    local totalChildren = 0
+    local matchedCount = 0
+    local validCount = 0
 
     for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
-        for _, pattern in ipairs(patterns) do
-            if string.match(child.Name, pattern) then
+        totalChildren = totalChildren + 1
+        
+        -- Check if child name starts with any of our target prefixes
+        for _, prefix in ipairs(monsterPrefixes) do
+            if string.find(child.Name, "^" .. prefix) then
+                matchedCount = matchedCount + 1
+                
+                -- Check if monster is valid (has HP > 0)
                 if isMonsterValid(child) then
-                    local monsterHRP = child:FindFirstChild("HumanoidRootPart")
-                    if monsterHRP then
-                        local dist = (monsterHRP.Position - hrp.Position).Magnitude
-                        if dist < minDist and dist < maxDist then
+                    local pos = getMonsterUndergroundPosition(child)
+                    if pos then
+                        local dist = (pos - hrp.Position).Magnitude
+                        validCount = validCount + 1
+                        if dist < minDist then
                             minDist = dist
                             targetMonster = child
                         end
@@ -1840,6 +1913,12 @@ local function findNearestMonster()
                 break
             end
         end
+    end
+
+    -- Debug output
+    if not targetMonster then
+        print(string.format("   📊 Debug: %d children, %d matched, %d valid", 
+            totalChildren, matchedCount, validCount))
     end
 
     return targetMonster, minDist
@@ -2036,7 +2115,7 @@ local function doKillMonsters()
 end
 
 ----------------------------------------------------------------
--- COBALT MODE: MAIN ROUTINE
+-- COBALT MODE: MAIN ROUTINE (Priority: Check Rare Weapon FIRST)
 ----------------------------------------------------------------
 local function doCobaltModeRoutine()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
@@ -2047,17 +2126,46 @@ local function doCobaltModeRoutine()
         return false
     end
 
-    -- Check ore requirements
-    local oreStatus, allComplete = getRequiredOreCount()
+    print("\n" .. string.rep("=", 60))
+    print("🎯 COBALT MODE: Checking for Rare Weapon...")
+    print(string.rep("=", 60))
 
-    if not allComplete then
-        return false -- Continue mining
+    -- ⭐ PRIORITY 1: Check if we already have Rare Weapon
+    print("\n🔍 Step 1: Checking inventory for Rare Weapon...")
+    local existingRareGUID = findRareWeaponByColor()
+
+    if existingRareGUID then
+        print("\n🌟 RARE WEAPON FOUND IN INVENTORY!")
+        State.rareWeaponFound = true
+        State.rareWeaponGUID = existingRareGUID
+
+        -- Equip and go kill monsters immediately!
+        print("\n⚡ Equipping Rare Weapon...")
+        equipWeaponByGUID(existingRareGUID)
+        task.wait(1)
+
+        print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
+        State.isPaused = false
+        State.cobaltModeActive = false
+        doKillMonsters()
+        return true
     end
 
-    print("\n" .. string.rep("=", 60))
-    print("🎯 COBALT MODE: ALL ORES COLLECTED!")
-    print(string.rep("=", 60))
+    print("   ⚠️ No Rare Weapon found, need to forge...")
+
+    -- ⭐ PRIORITY 2: Check if we have enough ores to forge
+    local oreStatus, haveOres = getRequiredOreCount()
     printOreStatus()
+
+    if not haveOres then
+        print("\n⛏️ Not enough ores! Need to mine more...")
+        return false -- Go back to mining
+    end
+
+    -- We have ores! Start forge sequence
+    print("\n" .. string.rep("=", 60))
+    print("🔨 COBALT MODE: Starting Forge Sequence...")
+    print(string.rep("=", 60))
 
     State.cobaltModeActive = true
 
@@ -2076,7 +2184,7 @@ local function doCobaltModeRoutine()
     end
 
     -- 2. Sell all non-equipped items first
-    print("\n📦 Step 1: Selling non-equipped items...")
+    print("\n📦 Step 2: Selling non-equipped items...")
     local sellShopPos = config.SELL_SHOP_POSITION
 
     local done = false
@@ -2096,89 +2204,69 @@ local function doCobaltModeRoutine()
         warn("   ⚠️ Failed to reach sell shop, continuing...")
     end
 
-    -- Forge loop until rare weapon found
-    local forgeAttempts = 0
-    local maxForgeAttempts = 10
+    -- 3. Move to Forge
+    print("\n⚒️ Step 3: Moving to Forge...")
+    setupForgeHook()
 
-    while Quest19Active and not State.rareWeaponFound and forgeAttempts < maxForgeAttempts do
-        forgeAttempts = forgeAttempts + 1
-        print(string.format("\n🔨 Forge Attempt #%d", forgeAttempts))
-
-        -- Check if we have enough ores
-        local _, haveOres = getRequiredOreCount()
-
-        if not haveOres then
-            print("   ⛏️ Need more ores! Returning to mining...")
-            State.isPaused = false
-            State.cobaltModeActive = false
-            return false -- Go back to mining
-        end
-
-        -- 3. Move to Forge
-        print("\n⚒️ Step 2: Moving to Forge...")
-        setupForgeHook()
-
-        if not moveToForge() then
-            warn("   ⚠️ Failed to reach Forge!")
-            task.wait(3)
-            continue
-        end
-
-        -- 4. Forge with specific ores
-        State.forgeComplete = false
-        local oreSelection = {}
-        for oreName, count in pairs(config.REQUIRED_ORES) do
-            oreSelection[oreName] = count
-        end
-
-        local forgeSuccess = startForge(oreSelection)
-
-        if forgeSuccess then
-            print("   ⏳ Waiting for forge to complete (27 seconds)...")
-            task.wait(27)
-            
-            -- Close Forge UI before checking inventory
-            closeForgeUI()
-        else
-            warn("   ❌ Forge failed, retrying...")
-            task.wait(3)
-            continue
-        end
-
-        task.wait(2)
-
-        -- 5. Check for rare weapon
-        print("\n🔍 Step 3: Checking for Rare Weapon...")
-        local rareGUID = findRareWeaponByColor()
-
-        if rareGUID then
-            State.rareWeaponFound = true
-            State.rareWeaponGUID = rareGUID
-
-            -- 6. Equip rare weapon
-            print("\n⚡ Step 4: Equipping Rare Weapon...")
-            equipWeaponByGUID(rareGUID)
-            task.wait(1)
-
-            -- 7. Switch to Monster Killing mode
-            print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
-            
-            -- Reset paused state so monster killing can work
-            State.isPaused = false
-            State.cobaltModeActive = false
-            
-            doKillMonsters()
-            return true
-        else
-            print("   🔄 No rare weapon, will try again if have ores...")
-        end
+    if not moveToForge() then
+        warn("   ⚠️ Failed to reach Forge!")
+        State.isPaused = false
+        State.cobaltModeActive = false
+        return false
     end
 
-    -- If we get here, either ran out of attempts or ores
-    print("\n⚠️ Cobalt Mode: Max attempts reached or out of ores")
-    State.isPaused = false
-    State.cobaltModeActive = false
-    return false
+    -- 4. Forge with specific ores
+    State.forgeComplete = false
+    local oreSelection = {}
+    for oreName, count in pairs(config.REQUIRED_ORES) do
+        oreSelection[oreName] = count
+    end
+
+    local forgeSuccess = startForge(oreSelection)
+
+    if forgeSuccess then
+        print("   ⏳ Waiting for forge to complete (27 seconds)...")
+        task.wait(27)
+        
+        -- Close Forge UI before checking inventory
+        closeForgeUI()
+    else
+        warn("   ❌ Forge failed!")
+        State.isPaused = false
+        State.cobaltModeActive = false
+        return false
+    end
+
+    task.wait(2)
+
+    -- 5. Check for rare weapon after forging
+    print("\n🔍 Step 4: Checking for Rare Weapon after forge...")
+    local rareGUID = findRareWeaponByColor()
+
+    if rareGUID then
+        State.rareWeaponFound = true
+        State.rareWeaponGUID = rareGUID
+
+        -- 6. Equip rare weapon
+        print("\n⚡ Step 5: Equipping Rare Weapon...")
+        equipWeaponByGUID(rareGUID)
+        task.wait(1)
+
+        -- 7. Switch to Monster Killing mode
+        print("\n🎉 Rare weapon equipped! Switching to Monster Killing mode...")
+        
+        -- Reset paused state so monster killing can work
+        State.isPaused = false
+        State.cobaltModeActive = false
+        
+        doKillMonsters()
+        return true
+    else
+        print("   🔄 No rare weapon from this forge, need more ores...")
+        State.isPaused = false
+        State.cobaltModeActive = false
+        return false -- Go back to mining for more ores
+    end
 end
 
 ----------------------------------------------------------------
@@ -2626,19 +2714,15 @@ local function doMineBasaltRock()
             continue
         end
 
-        -- 🎯 COBALT MODE: Check if ores are collected
+        -- 🎯 COBALT MODE: Check for Rare Weapon or Forge if have ores
         if hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
-            local _, allOresCollected = getRequiredOreCount()
-            if allOresCollected then
-                print("\n🎯 Cobalt Mode: All ores collected! Starting Forge sequence...")
-                local success = doCobaltModeRoutine()
-                if success then
-                    -- Cobalt Mode completed (rare weapon found, now killing monsters)
-                    -- This returns true when doKillMonsters is running/done
-                    break
-                end
-                -- If not successful, continue mining for more ores
+            -- This now checks: 1) Rare Weapon exists? 2) Have ores to forge? 3) Otherwise continue mining
+            local success = doCobaltModeRoutine()
+            if success then
+                -- Cobalt Mode completed (rare weapon found, now killing monsters)
+                break
             end
+            -- If not successful (no rare weapon, no ores), continue mining
         end
 
         local char = player.Character

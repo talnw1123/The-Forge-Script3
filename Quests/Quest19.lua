@@ -136,7 +136,7 @@ local QUEST_CONFIG = {
             "^Deathaxe Skeleton%d+$",
             "^Skeleton Rogue%d+$",
         },
-        MONSTER_UNDERGROUND_OFFSET = 6,
+        MONSTER_UNDERGROUND_OFFSET = 8,
         MONSTER_MAX_DISTANCE = 50,
     },
 
@@ -1788,6 +1788,18 @@ end
 local function equipWeaponByGUID(guid)
     print(string.format("⚡ Equipping weapon: %s", guid))
 
+    -- ✅ Check if weapon is already equipped (prevents unequipping bug)
+    openToolsMenu()
+    task.wait(0.3)
+    
+    local alreadyEquipped = isItemEquippedFromUI(guid)
+    closeToolsMenu()
+    
+    if alreadyEquipped then
+        print("   ✅ Weapon is already equipped! (skipping remote call)")
+        return true
+    end
+
     if not PlayerController or not PlayerController.Replica then
         warn("   ❌ PlayerController not available!")
         return false
@@ -2040,8 +2052,21 @@ local function doKillMonsters()
         while not State.targetDestroyed and Quest19Active and not State.isPaused do
             if not char or not char.Parent then break end
 
-            if not targetMonster or not targetMonster.Parent or not isMonsterValid(targetMonster) then
+            -- ✅ Check HP directly - switch immediately when HP = 0
+            local monsterHP = 0
+            if targetMonster and targetMonster.Parent then
+                local humanoid = targetMonster:FindFirstChild("Humanoid")
+                if humanoid then
+                    monsterHP = humanoid.Health or 0
+                end
+            end
+
+            -- If monster HP = 0 or monster is gone, switch to next target immediately
+            if monsterHP <= 0 or not targetMonster or not targetMonster.Parent then
+                print("   ✅ Monster killed (HP: 0)! Switching to next target...")
                 State.targetDestroyed = true
+                if ToolController then ToolController.holdingM1 = false end
+                unlockPosition()
                 break
             end
 
@@ -2089,11 +2114,13 @@ local function doKillMonsters()
                 end
             end
 
-            task.wait(0.15)
+            task.wait(0.4) -- Faster attack rate
         end
 
+        -- Quick cleanup and find next target
+        unlockPosition()
         print("   🔄 Finding next monster...")
-        task.wait(0.5)
+        task.wait(0.2) -- Reduced wait time for smoother farming
     end
 
     print("\n⚔️ Monster killing ended")
