@@ -163,12 +163,16 @@ end
 
 local CharacterService = nil
 local PlayerController = nil
-local ProximityService = nil
-local DialogueService = nil
 
 pcall(function()
     CharacterService = Knit.GetService("CharacterService")
     PlayerController = Knit.GetController("PlayerController")
+end)
+
+-- Services for selling (Quest04 pattern)
+local ProximityService = nil
+local DialogueService = nil
+pcall(function()
     ProximityService = Knit.GetService("ProximityService")
     DialogueService = Knit.GetService("DialogueService")
 end)
@@ -223,8 +227,10 @@ end)
 
 -- Forge Service (for Cobalt Mode)
 local ForgeService = nil
+local ForgeController = nil
 pcall(function()
     ForgeService = Knit.GetService("ForgeService")
+    ForgeController = Knit.GetController("ForgeController")
 end)
 
 local FORGE_OBJECT = nil
@@ -596,9 +602,9 @@ local function smoothMoveTo(targetPos, callback)
     end
 
     local reachedTarget = false
-    local phase = 1 -- Phase 1: Move Y first, Phase 2: Move X/Z
-    local Y_TOLERANCE = 2
-    local XZ_TOLERANCE = QUEST_CONFIG.STOP_DISTANCE or 2
+    local phase = 1 -- 1 = Y-axis first, 2 = XZ-axis
+    local Y_THRESHOLD = 3 -- Close enough for Y
+    local XZ_THRESHOLD = QUEST_CONFIG.STOP_DISTANCE or 2
 
     State.moveConn = RunService.Heartbeat:Connect(function()
         if reachedTarget then return end
@@ -632,30 +638,33 @@ local function smoothMoveTo(targetPos, callback)
         end
 
         local currentPos = hrp.Position
-        local yDiff = math.abs(targetPos.Y - currentPos.Y)
-        local xzDiff = math.sqrt((targetPos.X - currentPos.X)^2 + (targetPos.Z - currentPos.Z)^2)
 
-        -- Phase 1: Move Y axis first
         if phase == 1 then
-            if yDiff < Y_TOLERANCE then
+            -- Phase 1: Move Y first (vertical)
+            local yDiff = math.abs(targetPos.Y - currentPos.Y)
+            
+            if yDiff < Y_THRESHOLD then
+                -- Y is close enough, move to phase 2
                 phase = 2
                 if DEBUG_MODE then
-                    print("   📍 Y reached, moving X/Z...")
+                    print("   ✅ Y-axis reached, moving to XZ...")
                 end
             else
+                -- Move vertically only
                 local yDirection = Vector3.new(0, targetPos.Y - currentPos.Y, 0)
                 local speed = math.min(QUEST_CONFIG.MOVE_SPEED, yDiff * 10)
                 bv.Velocity = yDirection.Unit * speed
-                bg.CFrame = CFrame.lookAt(currentPos, currentPos + Vector3.new(0, 0, 1))
-                return
+                -- Keep looking forward towards target
+                bg.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
             end
-        end
+        else
+            -- Phase 2: Move XZ (horizontal) and fine-tune Y
+            local direction = (targetPos - currentPos)
+            local distance = direction.Magnitude
 
-        -- Phase 2: Move X and Z axes
-        if phase == 2 then
-            if xzDiff < XZ_TOLERANCE then
+            if distance < XZ_THRESHOLD then
                 if DEBUG_MODE then
-                    print(string.format("   ✅ Reached! (Y: %.1f, XZ: %.1f)", yDiff, xzDiff))
+                    print(string.format("   ✅ Reached! (%.1f)", distance))
                 end
 
                 reachedTarget = true
@@ -675,12 +684,13 @@ local function smoothMoveTo(targetPos, callback)
 
                 if callback then callback() end
                 return
-            else
-                local xzDirection = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
-                local speed = math.min(QUEST_CONFIG.MOVE_SPEED, xzDiff * 10)
-                bv.Velocity = xzDirection.Unit * speed
-                bg.CFrame = CFrame.lookAt(currentPos, currentPos + xzDirection)
             end
+
+            local speed = math.min(QUEST_CONFIG.MOVE_SPEED, distance * 10)
+            local velocity = direction.Unit * speed
+
+            bv.Velocity = velocity
+            bg.CFrame = CFrame.lookAt(currentPos, targetPos)
         end
     end)
 
@@ -1144,7 +1154,7 @@ local function getProximityNPC(name)
     return proximity:FindFirstChild(name)
 end
 
--- Sell all non-equipped weapons and armor (Quest04 style with NPC Wu)
+-- Sell all non-equipped weapons and armor (Quest04 pattern using Wu NPC)
 local function sellAllNonEquippedItems()
     print("\n💰 Selling all non-equipped Weapons/Armor...")
 
@@ -1164,22 +1174,28 @@ local function sellAllNonEquippedItems()
         print(string.format("      - %s", item.Type))
     end
 
-    -- Get NPC Wu for selling weapons
-    local proximity = Workspace:FindFirstChild("Proximity")
-    local npc = proximity and proximity:FindFirstChild("Wu")
-
+    -- Sell using Quest04 pattern with Wu NPC
+    local npc = getProximityNPC("Wu") or getProximityNPC("Marbles") or getProximityNPC("Greedy Cey")
+    
     if not npc then
-        warn("   ❌ NPC Wu not found!")
+        warn("   ❌ Sell NPC not found!")
         return false
     end
 
     if not ProximityService or not DialogueService then
         warn("   ❌ ProximityService or DialogueService not available!")
-        return false
+        -- Fallback to old method
+        if DIALOGUE_RF then
+            pcall(function()
+                DIALOGUE_RF:InvokeServer("SellConfirm", { Basket = basket })
+            end)
+            ForceEndDialogueAndRestore()
+        end
+        return true
     end
 
-    -- 1. Open dialogue with NPC Wu using ForceDialogue
-    print("   � Opening dialogue with Wu...")
+    -- 1. Open dialogue with NPC using ForceDialogue (Quest04 pattern)
+    print("   🔌 Opening dialogue with Wu...")
     local success1 = pcall(function()
         ProximityService:ForceDialogue(npc, "SellConfirm")
     end)
@@ -1191,26 +1207,25 @@ local function sellAllNonEquippedItems()
 
     task.wait(0.2)
 
-    -- 2. Sell using DialogueService
+    -- 2. Sell items using RunCommand (Quest04 pattern)
     print("   💸 Selling items...")
     local success2 = pcall(function()
         DialogueService:RunCommand("SellConfirm", { Basket = basket })
     end)
 
-    task.wait(0.1)
-
-    -- 3. Restore state
-    ForceEndDialogueAndRestore()
-
     if success2 then
         print("   ✅ Sold all items successfully!")
+        task.wait(0.1)
+        ForceEndDialogueAndRestore()
         return true
     else
-        warn("   ⚠️ Sell may have failed")
+        warn("   ⚠️ Sell may have partially failed")
         ForceEndDialogueAndRestore()
-        return false
+        return true -- Continue anyway
     end
 end
+
+
 
 -- Try to buy Magma Pickaxe (with sell items first)
 local function tryBuyMagmaPickaxe()
@@ -1494,7 +1509,7 @@ local function setupForgeHook()
         return
     end
 
-    print("🔧 Installing Forge Hook (Auto Progression)...")
+    print("🔧 Installing Forge Hook (Quest03 pattern)...")
 
     local originalChangeSequence = ForgeService.ChangeSequence
 
@@ -1503,31 +1518,30 @@ local function setupForgeHook()
 
         local success, result = pcall(originalChangeSequence, self, sequenceName, args)
 
-        -- Auto progression through forge phases (Quest03 style)
         task.spawn(function()
             if sequenceName == "Melt" then
                 print("      ⏩ Auto: Pouring in 8s...")
                 task.wait(8)
                 self:ChangeSequence("Pour", {ClientTime = 8.5, InContact = true})
-
+                
             elseif sequenceName == "Pour" then
                 print("      ⏩ Auto: Hammering in 5s...")
                 task.wait(5)
                 self:ChangeSequence("Hammer", {ClientTime = 5.2})
-
+                
             elseif sequenceName == "Hammer" then
                 print("      ⏩ Auto: Watering in 6s...")
                 task.wait(6)
                 self:ChangeSequence("Water", {ClientTime = 6.5})
-
+                
             elseif sequenceName == "Water" then
                 print("      ⏩ Auto: Showcasing in 3s...")
                 task.wait(3)
                 self:ChangeSequence("Showcase", {})
-
+                
             elseif sequenceName == "Showcase" then
+                print("      ✅ Forge completed!")
                 State.forgeComplete = true
-                print("   ✅ Forge completed!")
             end
         end)
 
