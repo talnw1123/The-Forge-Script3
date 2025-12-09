@@ -491,6 +491,50 @@ local function isOreProtected(oreName)
 end
 
 ----------------------------------------------------------------
+-- HOTKEY HELPER (for weapon/pickaxe equipping)
+----------------------------------------------------------------
+local HOTKEY_MAP = {
+    ["1"] = Enum.KeyCode.One,
+    ["2"] = Enum.KeyCode.Two,
+    ["3"] = Enum.KeyCode.Three,
+    ["4"] = Enum.KeyCode.Four,
+    ["5"] = Enum.KeyCode.Five,
+    ["6"] = Enum.KeyCode.Six,
+    ["7"] = Enum.KeyCode.Seven,
+    ["8"] = Enum.KeyCode.Eight,
+    ["9"] = Enum.KeyCode.Nine,
+    ["0"] = Enum.KeyCode.Zero
+}
+
+local function pressKey(keyCode)
+    if not keyCode then return end
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+local function findWeaponSlotKey()
+    local gui = player:FindFirstChild("PlayerGui")
+    if not gui then return nil, nil end
+    
+    local hotbar = gui:FindFirstChild("BackpackGui") 
+        and gui.BackpackGui:FindFirstChild("Backpack") 
+        and gui.BackpackGui.Backpack:FindFirstChild("Hotbar")
+    
+    if hotbar then
+        for _, slotFrame in ipairs(hotbar:GetChildren()) do
+            local frame = slotFrame:FindFirstChild("Frame")
+            local label = frame and frame:FindFirstChild("ToolName")
+            if label and label:IsA("TextLabel") and not string.find(label.Text, "Pickaxe") and label.Text ~= "" then
+                return HOTKEY_MAP[slotFrame.Name], label.Text
+            end
+        end
+    end
+    
+    return nil, nil
+end
+
+----------------------------------------------------------------
 -- FORCE CLOSE DIALOG
 ----------------------------------------------------------------
 local function ForceEndDialogueAndRestore()
