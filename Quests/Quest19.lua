@@ -1821,9 +1821,6 @@ local function findNearestMonster()
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
-    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
-    local maxDist = config.MONSTER_MAX_DISTANCE or 50
-
     -- Monster name prefixes to look for (without numbers)
     local monsterPrefixes = {
         "Axe Skeleton",
@@ -1835,12 +1832,6 @@ local function findNearestMonster()
     local targetMonster, minDist = nil, math.huge
     local totalChildren = 0
     local matchedCount = 0
-    
-    -- Debug counters
-    local noHumanoid = 0
-    local noHP = 0
-    local noHRP = 0
-    local tooFar = 0
     local validCount = 0
 
     for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
@@ -1848,31 +1839,18 @@ local function findNearestMonster()
         
         -- Check if child name starts with any of our target prefixes
         for _, prefix in ipairs(monsterPrefixes) do
-            -- Use string.find to check if name starts with prefix
             if string.find(child.Name, "^" .. prefix) then
                 matchedCount = matchedCount + 1
                 
-                -- Debug: Check why monster might be invalid
-                local humanoid = child:FindFirstChild("Humanoid")
-                if not humanoid then
-                    noHumanoid = noHumanoid + 1
-                elseif humanoid.Health <= 0 then
-                    noHP = noHP + 1
-                else
-                    -- Monster has Humanoid and HP > 0
-                    local monsterHRP = child:FindFirstChild("HumanoidRootPart")
-                    if not monsterHRP then
-                        noHRP = noHRP + 1
-                    else
-                        local dist = (monsterHRP.Position - hrp.Position).Magnitude
-                        if dist >= maxDist then
-                            tooFar = tooFar + 1
-                        else
-                            validCount = validCount + 1
-                            if dist < minDist then
-                                minDist = dist
-                                targetMonster = child
-                            end
+                -- Check if monster is valid (has HP > 0)
+                if isMonsterValid(child) then
+                    local pos = getMonsterUndergroundPosition(child)
+                    if pos then
+                        local dist = (pos - hrp.Position).Magnitude
+                        validCount = validCount + 1
+                        if dist < minDist then
+                            minDist = dist
+                            targetMonster = child
                         end
                     end
                 end
@@ -1881,12 +1859,10 @@ local function findNearestMonster()
         end
     end
 
-    -- Always print debug info when no monster found
+    -- Debug output
     if not targetMonster then
-        print(string.format("   📊 Debug: %d children, %d matched", totalChildren, matchedCount))
-        print(string.format("   📊 noHumanoid=%d, noHP=%d, noHRP=%d, tooFar=%d, valid=%d", 
-            noHumanoid, noHP, noHRP, tooFar, validCount))
-        print(string.format("   📊 maxDist=%d", maxDist))
+        print(string.format("   📊 Debug: %d children, %d matched, %d valid", 
+            totalChildren, matchedCount, validCount))
     end
 
     return targetMonster, minDist
