@@ -1812,21 +1812,39 @@ local function isMonsterValid(monster)
 end
 
 local function findNearestMonster()
-    if not LIVING_FOLDER then return nil end
+    if not LIVING_FOLDER then 
+        warn("   ❌ LIVING_FOLDER is nil!")
+        return nil 
+    end
 
     local char = player.Character
     local hrp = char and char:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
 
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
-    local patterns = config.MONSTER_PATTERNS
     local maxDist = config.MONSTER_MAX_DISTANCE or 50
 
+    -- Monster name prefixes to look for (without numbers)
+    local monsterPrefixes = {
+        "Axe Skeleton",
+        "Bomber",
+        "Deathaxe Skeleton",
+        "Skeleton Rogue",
+    }
+
     local targetMonster, minDist = nil, math.huge
+    local totalChildren = 0
+    local matchedCount = 0
 
     for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
-        for _, pattern in ipairs(patterns) do
-            if string.match(child.Name, pattern) then
+        totalChildren = totalChildren + 1
+        
+        -- Check if child name starts with any of our target prefixes
+        for _, prefix in ipairs(monsterPrefixes) do
+            -- Use string.find to check if name starts with prefix
+            if string.find(child.Name, "^" .. prefix) then
+                matchedCount = matchedCount + 1
+                
                 if isMonsterValid(child) then
                     local monsterHRP = child:FindFirstChild("HumanoidRootPart")
                     if monsterHRP then
@@ -1840,6 +1858,10 @@ local function findNearestMonster()
                 break
             end
         end
+    end
+
+    if DEBUG_MODE then
+        print(string.format("   📊 Living folder has %d children, %d matched patterns", totalChildren, matchedCount))
     end
 
     return targetMonster, minDist
