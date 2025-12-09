@@ -1835,6 +1835,13 @@ local function findNearestMonster()
     local targetMonster, minDist = nil, math.huge
     local totalChildren = 0
     local matchedCount = 0
+    
+    -- Debug counters
+    local noHumanoid = 0
+    local noHP = 0
+    local noHRP = 0
+    local tooFar = 0
+    local validCount = 0
 
     for _, child in ipairs(LIVING_FOLDER:GetChildren()) do
         totalChildren = totalChildren + 1
@@ -1845,13 +1852,27 @@ local function findNearestMonster()
             if string.find(child.Name, "^" .. prefix) then
                 matchedCount = matchedCount + 1
                 
-                if isMonsterValid(child) then
+                -- Debug: Check why monster might be invalid
+                local humanoid = child:FindFirstChild("Humanoid")
+                if not humanoid then
+                    noHumanoid = noHumanoid + 1
+                elseif humanoid.Health <= 0 then
+                    noHP = noHP + 1
+                else
+                    -- Monster has Humanoid and HP > 0
                     local monsterHRP = child:FindFirstChild("HumanoidRootPart")
-                    if monsterHRP then
+                    if not monsterHRP then
+                        noHRP = noHRP + 1
+                    else
                         local dist = (monsterHRP.Position - hrp.Position).Magnitude
-                        if dist < minDist and dist < maxDist then
-                            minDist = dist
-                            targetMonster = child
+                        if dist >= maxDist then
+                            tooFar = tooFar + 1
+                        else
+                            validCount = validCount + 1
+                            if dist < minDist then
+                                minDist = dist
+                                targetMonster = child
+                            end
                         end
                     end
                 end
@@ -1860,8 +1881,12 @@ local function findNearestMonster()
         end
     end
 
-    if DEBUG_MODE then
-        print(string.format("   📊 Living folder has %d children, %d matched patterns", totalChildren, matchedCount))
+    -- Always print debug info when no monster found
+    if not targetMonster then
+        print(string.format("   📊 Debug: %d children, %d matched", totalChildren, matchedCount))
+        print(string.format("   📊 noHumanoid=%d, noHP=%d, noHRP=%d, tooFar=%d, valid=%d", 
+            noHumanoid, noHP, noHRP, tooFar, validCount))
+        print(string.format("   📊 maxDist=%d", maxDist))
     end
 
     return targetMonster, minDist
