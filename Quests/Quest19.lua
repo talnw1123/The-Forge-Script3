@@ -1771,6 +1771,17 @@ local function findRareWeaponByColor()
                     and math.abs(g - 189) < tolerance 
                     and math.abs(b - 246) < tolerance then
 
+                    -- ✅ Check OreName to exclude Mushroomite items
+                    local oreName = child:FindFirstChild("OreName")
+                    if oreName and oreName:IsA("TextLabel") then
+                        local oreText = oreName.Text or ""
+                        if string.find(oreText, "Mushroomite") then
+                            print(string.format("   ⏭️ Skipping Mushroomite item: %s (Color matches but OreName = %s)", 
+                                child.Name, oreText))
+                            continue -- Not a rare weapon, skip to next item
+                        end
+                    end
+
                     print(string.format("   🌟 RARE WEAPON FOUND! GUID: %s (Color: %.0f, %.0f, %.0f)", 
                         child.Name, r, g, b))
                     closeToolsMenu()

@@ -2052,8 +2052,21 @@ local function doKillMonsters()
         while not State.targetDestroyed and Quest19Active and not State.isPaused do
             if not char or not char.Parent then break end
 
-            if not targetMonster or not targetMonster.Parent or not isMonsterValid(targetMonster) then
+            -- ✅ Check HP directly - switch immediately when HP = 0
+            local monsterHP = 0
+            if targetMonster and targetMonster.Parent then
+                local humanoid = targetMonster:FindFirstChild("Humanoid")
+                if humanoid then
+                    monsterHP = humanoid.Health or 0
+                end
+            end
+
+            -- If monster HP = 0 or monster is gone, switch to next target immediately
+            if monsterHP <= 0 or not targetMonster or not targetMonster.Parent then
+                print("   ✅ Monster killed (HP: 0)! Switching to next target...")
                 State.targetDestroyed = true
+                if ToolController then ToolController.holdingM1 = false end
+                -- ❌ Don't unlock here - will move directly to next target
                 break
             end
 
@@ -2101,16 +2114,23 @@ local function doKillMonsters()
                 end
             end
 
-            task.wait(0.15)
+            task.wait(0.4)
         end
 
+        -- ✅ Don't unlock between monsters - smoothMoveTo will handle transition
+        -- Just disconnect the position lock connection, smoothMoveTo will create new one
+        if State.positionLockConn then
+            State.positionLockConn:Disconnect()
+            State.positionLockConn = nil
+        end
+        
         print("   🔄 Finding next monster...")
-        task.wait(0.5)
+        task.wait(0.1) -- Minimal wait - move to next target immediately
     end
 
     print("\n⚔️ Monster killing ended")
     IsKillingActive = false
-    unlockPosition()
+    unlockPosition() -- Only unlock when completely done
     disableNoclip()
 end
 
