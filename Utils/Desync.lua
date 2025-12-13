@@ -1,42 +1,38 @@
 --[[
-    Desync Module - FFlag Version
+================================================================================
+    🔄 DESYNC MODULE - FFlags + Auto Death
     
-    ใช้ setfflag เพื่อ manipulate network replication
-    
-    วิธีใช้:
-    - F6 = Toggle desync ON/OFF
-    - F7 = Force disable
-    - F8 = Test if setfflag is available
-    
-    Based on working scripts from ScriptBlox
+    💡 วิธีการ:
+    1. Set FFlags ทันที
+    2. Teleport ตกใต้แผนที่เพื่อตาย
+    3. หลัง respawn → Desync ใช้งานได้!
+================================================================================
 ]]
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
 
 ----------------------------------------------------------------
 -- STATE
 ----------------------------------------------------------------
-local State = {
-    isDesynced = false,
-    clone = nil,
-    savedPosition = nil,
-    savedCFrame = nil,
+local DesyncState = {
+    fflagsApplied = false,
+    isReady = false,
 }
 
 local DEBUG = true
 
 local function log(...)
     if DEBUG then
-        print("[FFLAG-DESYNC]", ...)
+        print("[DESYNC]", ...)
     end
 end
 
 ----------------------------------------------------------------
--- CHECK SETFFLAG AVAILABILITY
+-- CHECK SETFFLAG
 ----------------------------------------------------------------
 local function hasSetFFlag()
     local available = false
@@ -49,265 +45,294 @@ local function hasSetFFlag()
 end
 
 ----------------------------------------------------------------
--- CLONE HELPER
+-- APPLY ALL FFLAGS
 ----------------------------------------------------------------
-local function getHRP()
-    local char = player.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
-
-local function createClone()
-    local char = player.Character
-    if not char then return nil end
-    
-    local hrp = getHRP()
-    if not hrp then return nil end
-    
-    local clone = Instance.new("Model")
-    clone.Name = "DesyncClone"
-    
-    for _, part in ipairs(char:GetDescendants()) do
-        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-            local newPart = part:Clone()
-            newPart.Anchored = true
-            newPart.CanCollide = false
-            newPart.CanTouch = false
-            newPart.CanQuery = false
-            newPart.Transparency = newPart.Transparency + 0.3
-            
-            for _, child in ipairs(newPart:GetChildren()) do
-                if child:IsA("Weld") or child:IsA("WeldConstraint") or 
-                   child:IsA("Motor6D") or child:IsA("Attachment") or
-                   child:IsA("Constraint") then
-                    child:Destroy()
-                end
-            end
-            
-            newPart.Parent = clone
-            
-        elseif part:IsA("Accessory") then
-            local accessoryClone = part:Clone()
-            for _, accPart in ipairs(accessoryClone:GetDescendants()) do
-                if accPart:IsA("BasePart") then
-                    accPart.Anchored = true
-                    accPart.CanCollide = false
-                    accPart.Transparency = accPart.Transparency + 0.3
-                end
-                if accPart:IsA("Weld") or accPart:IsA("WeldConstraint") or 
-                   accPart:IsA("Motor6D") then
-                    accPart:Destroy()
-                end
-            end
-            accessoryClone.Parent = clone
-        end
-    end
-    
-    clone.Parent = Workspace
-    return clone
-end
-
-local function deleteClone()
-    if State.clone and State.clone.Parent then
-        State.clone:Destroy()
-        State.clone = nil
-    end
-end
-
-----------------------------------------------------------------
--- FFLAG DESYNC - MAIN METHOD
-----------------------------------------------------------------
-local function enableDesyncFFlags()
+local function applyAllFFlags()
     if not hasSetFFlag() then
-        log("❌ setfflag is NOT available in this executor!")
+        log("❌ setfflag not available!")
         return false
     end
     
-    log("🔧 Setting FFlags for desync...")
+    if DesyncState.fflagsApplied then
+        log("⚠️ FFlags already applied")
+        return true
+    end
     
-    -- Method 1: Simple desync (from first script)
-    pcall(function()
-        setfflag("WorldStepMax", "-99999999999999")
-        log("✅ WorldStepMax set")
-    end)
+    log("🔧 Applying ALL FFlags...")
     
-    -- Method 2: Network replication manipulation
+    -- GameNet PV Headers
     pcall(function()
         setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "-5000")
-        log("✅ GameNetPVHeaderRotationalVelocityZeroCutoffExponent set")
-    end)
-    
-    pcall(function()
         setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "-5000")
-        log("✅ GameNetPVHeaderLinearVelocityZeroCutoffExponent set")
     end)
     
-    -- Method 3: Next Gen Replicator
-    pcall(function()
-        setfflag("NextGenReplicatorEnabledWrite4", "true")
-        log("✅ NextGenReplicatorEnabledWrite4 set")
-    end)
-    
+    -- LargeReplicator
     pcall(function()
         setfflag("LargeReplicatorWrite5", "true")
         setfflag("LargeReplicatorEnabled9", "true")
         setfflag("LargeReplicatorRead5", "true")
-        log("✅ LargeReplicator flags set")
+        setfflag("LargeReplicatorSerializeRead3", "true")
+        setfflag("LargeReplicatorSerializeWrite4", "true")
     end)
     
-    -- Method 4: Physics sender manipulation
+    -- NextGenReplicator
     pcall(function()
-        setfflag("S2PhysicsSenderRate", "15000")
-        setfflag("PhysicsSenderMaxBandwidthBps", "20000")
-        log("✅ Physics sender flags set")
+        setfflag("NextGenReplicatorEnabledWrite4", "true")
     end)
     
-    -- Method 5: Timestep manipulation
+    -- Timestep
     pcall(function()
         setfflag("MaxTimestepMultiplierContstraint", "2147483647")
         setfflag("MaxTimestepMultiplierBuoyancy", "2147483647")
         setfflag("MaxTimestepMultiplierAcceleration", "2147483647")
-        log("✅ Timestep flags set")
+        setfflag("SimExplicitlyCappedTimestepMultiplier", "2147483646")
     end)
     
-    -- Method 6: Replication focus manipulation
+    -- TimestepArbiter
     pcall(function()
-        setfflag("ReplicationFocusNouExtentsSizeCutoffForPauseStuds", "2147483647")
-        log("✅ ReplicationFocus flags set")
+        setfflag("TimestepArbiterVelocityCriteriaThresholdTwoDt", "2147483646")
+        setfflag("TimestepArbiterHumanoidLinearVelThreshold", "1")
+        setfflag("TimestepArbiterHumanoidTurningVelThreshold", "1")
+        setfflag("TimestepArbiterOmegaThou", "1073741823")
     end)
     
-    -- Method 7: Interpolation manipulation
+    -- Physics/Network
+    pcall(function()
+        setfflag("S2PhysicsSenderRate", "15000")
+        setfflag("PhysicsSenderMaxBandwidthBps", "20000")
+        setfflag("MaxDataPacketPerSend", "2147483647")
+        setfflag("ServerMaxBandwith", "52")
+    end)
+    
+    -- CheckPV
+    pcall(function()
+        setfflag("CheckPVCachedVelThresholdPercent", "10")
+        setfflag("CheckPVCachedRotVelThresholdPercent", "10")
+        setfflag("CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent", "1")
+        setfflag("CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth", "1")
+        setfflag("CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth", "1")
+    end)
+    
+    -- Interpolation
     pcall(function()
         setfflag("InterpolationFrameVelocityThresholdMillionth", "5")
         setfflag("InterpolationFrameRotVelocityThresholdMillionth", "5")
         setfflag("InterpolationFramePositionThresholdMillionth", "5")
-        log("✅ Interpolation flags set")
     end)
     
-    -- Method 8: Max missed world steps
+    -- Streaming
+    pcall(function()
+        setfflag("StreamJobNOUVolumeLengthCap", "2147483647")
+        setfflag("StreamJobNOUVolumeCap", "2147483647")
+        setfflag("SimOwnedNOUCountThresholdMillionth", "2147483647")
+        setfflag("ReplicationFocusNouExtentsSizeCutoffForPauseStuds", "2147483647")
+    end)
+    
+    -- Misc
     pcall(function()
         setfflag("MaxMissedWorldStepsRemembered", "-2147483648")
-        log("✅ MaxMissedWorldStepsRemembered set")
+        setfflag("DebugSendDistInSteps", "-2147483648")
+        setfflag("GameNetDontSendRedundantNumTimes", "1")
+        setfflag("GameNetDontSendRedundantDeltaPositionMillionth", "1")
+        setfflag("MaxAcceptableUpdateDelay", "1")
+        setfflag("AngularVelociryLimit", "360")
+        setfflag("WorldStepMax", "30")
+        setfflag("DisableDPIScale", "true")
+    end)
+    
+    DesyncState.fflagsApplied = true
+    log("✅ All 40+ FFlags applied!")
+    return true
+end
+
+----------------------------------------------------------------
+-- DISABLE FFLAGS
+----------------------------------------------------------------
+local function disableFFlags()
+    if not hasSetFFlag() then return end
+    
+    log("🔧 Restoring FFlags...")
+    
+    pcall(function()
+        setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "0")
+        setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "0")
+        setfflag("LargeReplicatorWrite5", "false")
+        setfflag("LargeReplicatorEnabled9", "false")
+        setfflag("NextGenReplicatorEnabledWrite4", "false")
+        setfflag("DisableDPIScale", "false")
+    end)
+    
+    DesyncState.fflagsApplied = false
+    DesyncState.isReady = false
+    log("✅ FFlags restored")
+end
+
+----------------------------------------------------------------
+-- FORCE DEATH - All IY Methods Combined
+----------------------------------------------------------------
+local function forceDeath()
+    log("💀 Triggering death (All IY Methods)...")
+    
+    local character = LocalPlayer.Character
+    if not character then
+        log("❌ No character!")
+        return false
+    end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    
+    -- Save position for after respawn
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local savedPos = hrp and hrp.CFrame or nil
+    
+    -- Method 1: replicatesignal (most reliable if available)
+    local hasReplicateSignal = false
+    pcall(function()
+        if typeof(replicatesignal) == "function" then
+            hasReplicateSignal = true
+        end
+    end)
+    
+    if hasReplicateSignal then
+        log("💀 Method 1: replicatesignal(Kill)...")
+        pcall(function()
+            replicatesignal(LocalPlayer.Kill)
+        end)
+        task.wait(0.5)
+    end
+    
+    -- Check if still alive after method 1
+    local stillAlive = LocalPlayer.Character and 
+                       LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
+                       LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0
+    
+    -- Method 2: ChangeState to Dead
+    if stillAlive and humanoid then
+        log("💀 Method 2: ChangeState(Dead)...")
+        pcall(function()
+            humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+        end)
+        task.wait(0.5)
+    end
+    
+    -- Check again
+    stillAlive = LocalPlayer.Character and 
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0
+    
+    -- Method 3: BreakJoints
+    if stillAlive then
+        log("💀 Method 3: BreakJoints()...")
+        pcall(function()
+            LocalPlayer.Character:BreakJoints()
+        end)
+        task.wait(0.5)
+    end
+    
+    -- Check again
+    stillAlive = LocalPlayer.Character and 
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0
+    
+    -- Method 4: Destroy Humanoid + Swap Character (IY respawn method)
+    if stillAlive then
+        log("💀 Method 4: Destroy Humanoid + Swap...")
+        pcall(function()
+            local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if hum then hum:Destroy() end
+        end)
+        
+        pcall(function()
+            local char = LocalPlayer.Character
+            local newChar = Instance.new("Model")
+            newChar.Parent = workspace
+            LocalPlayer.Character = newChar
+            task.wait()
+            LocalPlayer.Character = char
+            newChar:Destroy()
+        end)
+        task.wait(0.5)
+    end
+    
+    -- Method 5: CharacterService:Reset() as final fallback
+    stillAlive = LocalPlayer.Character and 
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid") and
+                 LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Health > 0
+    
+    if stillAlive then
+        log("💀 Method 5: CharacterService:Reset()...")
+        pcall(function()
+            local Knit = require(ReplicatedStorage.Shared.Packages.Knit)
+            local CharacterService = Knit.GetService("CharacterService")
+            CharacterService:Reset()
+        end)
+    end
+    
+    log("✅ Death methods executed!")
+    
+    -- Wait for respawn and restore position
+    task.spawn(function()
+        local newChar = LocalPlayer.CharacterAdded:Wait()
+        if savedPos then
+            local newHrp = newChar:WaitForChild("HumanoidRootPart", 5)
+            if newHrp then
+                task.wait(0.5)
+                newHrp.CFrame = savedPos
+                log("📍 Position restored!")
+            end
+        end
     end)
     
     return true
 end
 
-local function disableDesyncFFlags()
-    if not hasSetFFlag() then return end
+-- Alternative method using replicatesignal if available
+local function forceDeathAdvanced()
+    log("💀 Attempting advanced death...")
     
-    log("🔧 Restoring FFlags...")
-    
-    -- Restore WorldStepMax
+    -- Check if replicatesignal is available
+    local hasReplicateSignal = false
     pcall(function()
-        setfflag("WorldStepMax", "30")
-        log("✅ WorldStepMax restored")
-    end)
-    
-    -- Restore other flags
-    pcall(function()
-        setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "0")
-        setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "0")
-        log("✅ GameNetPV flags restored")
-    end)
-    
-    pcall(function()
-        setfflag("NextGenReplicatorEnabledWrite4", "false")
-        log("✅ NextGenReplicator restored")
-    end)
-end
-
-----------------------------------------------------------------
--- MAIN TOGGLE
-----------------------------------------------------------------
-local function enableDesync()
-    local hrp = getHRP()
-    if not hrp then
-        log("❌ No character!")
-        return false
-    end
-    
-    -- Save position
-    State.savedPosition = hrp.Position
-    State.savedCFrame = hrp.CFrame
-    log("📍 Saved position:", State.savedPosition)
-    
-    -- Create clone (visual marker)
-    State.clone = createClone()
-    if State.clone then
-        log("✅ Clone created (visual marker)")
-    end
-    
-    -- Enable FFlag desync
-    local success = enableDesyncFFlags()
-    
-    if success then
-        State.isDesynced = true
-        log("=== DESYNC ACTIVE ===")
-        log("💡 FFlags have been set!")
-        log("💡 Other players should see you frozen!")
-        log("💡 Press F6 or F7 to disable")
-        return true
-    else
-        log("❌ Failed to enable desync")
-        deleteClone()
-        return false
-    end
-end
-
-local function disableDesync()
-    -- Disable FFlags
-    disableDesyncFFlags()
-    
-    -- Delete clone
-    deleteClone()
-    
-    State.isDesynced = false
-    log("=== DESYNC DISABLED ===")
-    log("✅ FFlags restored, you are synced again")
-end
-
-local function toggleDesync()
-    if State.isDesynced then
-        disableDesync()
-    else
-        enableDesync()
-    end
-    return State.isDesynced
-end
-
-----------------------------------------------------------------
--- TEST CAPABILITIES
-----------------------------------------------------------------
-local function testCapabilities()
-    log("=== TESTING CAPABILITIES ===")
-    
-    -- Test setfflag
-    if hasSetFFlag() then
-        log("✅ setfflag is available!")
-        
-        -- Try to read current value
-        pcall(function()
-            if typeof(getfflag) == "function" then
-                local currentWorldStep = getfflag("WorldStepMax")
-                log("📊 Current WorldStepMax:", currentWorldStep)
-            end
-        end)
-    else
-        log("❌ setfflag is NOT available!")
-        log("⚠️ Your executor may not support FFlags")
-    end
-    
-    -- Test other executor functions
-    pcall(function()
-        if typeof(sethiddenproperty) == "function" then
-            log("✅ sethiddenproperty available")
-        else
-            log("❌ sethiddenproperty NOT available")
+        if typeof(replicatesignal) == "function" then
+            hasReplicateSignal = true
         end
     end)
     
-    log("=== END TEST ===")
+    if hasReplicateSignal then
+        log("✅ Using replicatesignal method...")
+        pcall(function()
+            replicatesignal(LocalPlayer.ConnectDiedSignalBackend)
+            task.wait(Players.RespawnTime - 0.1)
+            replicatesignal(LocalPlayer.Kill)
+        end)
+        return true
+    else
+        -- Use standard IY method
+        return forceDeath()
+    end
 end
+
+
+
+----------------------------------------------------------------
+-- CHARACTER ADDED - Track respawns
+----------------------------------------------------------------
+local respawnCount = 0
+
+LocalPlayer.CharacterAdded:Connect(function(character)
+    respawnCount = respawnCount + 1
+    
+    task.wait(0.5)
+    
+    if DesyncState.fflagsApplied and respawnCount > 1 then
+        DesyncState.isReady = true
+        log("")
+        log("🎉 =============================================")
+        log("🎉 DESYNC ACTIVATED AFTER RESPAWN!")
+        log("🎉 =============================================")
+        log("")
+    end
+end)
 
 ----------------------------------------------------------------
 -- INPUT
@@ -315,33 +340,72 @@ end
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     
-    if input.KeyCode == Enum.KeyCode.F6 then
-        toggleDesync()
-    elseif input.KeyCode == Enum.KeyCode.F7 then
-        log("=== FORCE DISABLE ===")
-        disableDesync()
-    elseif input.KeyCode == Enum.KeyCode.F8 then
-        testCapabilities()
+    -- NumPad 5 = Apply FFlags only
+    if input.KeyCode == Enum.KeyCode.KeypadFive then
+        applyAllFFlags()
+        log("")
+        log("⚠️ FFlags applied! Now press NumPad 6 to respawn")
+        log("")
+        
+    -- NumPad 6 = Apply FFlags + Force Death
+    elseif input.KeyCode == Enum.KeyCode.KeypadSix then
+        applyAllFFlags()
+        task.wait(0.2)
+        forceDeath()
+        
+    -- NumPad 7 = Disable FFlags
+    elseif input.KeyCode == Enum.KeyCode.KeypadSeven then
+        disableFFlags()
+        
+    -- NumPad 0 = Status
+    elseif input.KeyCode == Enum.KeyCode.KeypadZero then
+        log("")
+        log("========== STATUS ==========")
+        log("setfflag:", hasSetFFlag() and "✅" or "❌")
+        log("FFlags applied:", DesyncState.fflagsApplied and "✅" or "❌")
+        log("Desync ready:", DesyncState.isReady and "✅" or "❌")
+        log("============================")
+        log("")
     end
 end)
 
 ----------------------------------------------------------------
--- INIT
+-- AUTO-APPLY ON LOAD
 ----------------------------------------------------------------
-log("FFlag Desync Module Loaded!")
-log("F6 = Toggle desync, F7 = Force disable, F8 = Test capabilities")
+log("")
+log("==========================================")
+log("   🔄 DESYNC MODULE v2")
+log("==========================================")
+log("")
+log("NumPad 5 = Apply FFlags")
+log("NumPad 6 = Apply FFlags + Force Death/Respawn")
+log("NumPad 7 = Disable FFlags")
+log("NumPad 0 = Check Status")
+log("")
 
--- Auto-test on load
-task.defer(testCapabilities)
+if hasSetFFlag() then
+    log("✅ setfflag available!")
+    log("🚀 Auto-applying FFlags...")
+    applyAllFFlags()
+    
+    if LocalPlayer.Character then
+        log("")
+        log("⚠️ Character exists - Press NumPad 6 to respawn!")
+        log("")
+    end
+else
+    log("❌ setfflag not available!")
+end
+
+log("==========================================")
 
 ----------------------------------------------------------------
 -- MODULE
 ----------------------------------------------------------------
 return {
-    Toggle = toggleDesync,
-    Enable = enableDesync,
-    Disable = disableDesync,
-    IsDesynced = function() return State.isDesynced end,
-    Test = testCapabilities,
-    HasSetFFlag = hasSetFFlag,
+    Apply = applyAllFFlags,
+    Disable = disableFFlags,
+    ForceDeath = forceDeath,
+    IsApplied = function() return DesyncState.fflagsApplied end,
+    IsReady = function() return DesyncState.isReady end,
 }

@@ -40,6 +40,10 @@ local Settings = {
     TargetFPS = 60,                -- FPS เป้าหมาย (ถ้าเปิด LimitFPS)
     GarbageCollect = true,         -- ทำ Garbage Collection
     GCInterval = 60,               -- ทำ GC ทุกกี่วินาที
+    
+    -- ====== DESYNC ======
+    EnableDesync = true,           -- เปิด Desync (คนอื่นเห็นคุณค้างอยู่ที่เดิม)
+    DesyncAutoRespawn = true,      -- Auto respawn เพื่อ activate Desync
 }
 
 ----------------------------------------------------------------
