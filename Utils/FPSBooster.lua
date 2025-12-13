@@ -40,10 +40,6 @@ local Settings = {
     TargetFPS = 60,                -- FPS เป้าหมาย (ถ้าเปิด LimitFPS)
     GarbageCollect = true,         -- ทำ Garbage Collection
     GCInterval = 60,               -- ทำ GC ทุกกี่วินาที
-    
-    -- ====== DESYNC (NEW!) ======
-    EnableDesync = true,           -- เปิด Desync อัตโนมัติ (คนอื่นเห็นคุณค้างอยู่ที่เดิม)
-    DesyncAutoStart = true,        -- เริ่ม Desync ทันทีเมื่อ script load
 }
 
 ----------------------------------------------------------------
@@ -524,116 +520,6 @@ local function createFPSCounter()
 end
 
 ----------------------------------------------------------------
--- 🔄 DESYNC - FFLAG NETWORK MANIPULATION (NEW!)
-----------------------------------------------------------------
-local DesyncState = {
-    isActive = false,
-}
-
-local function hasSetFFlag()
-    local available = false
-    pcall(function()
-        if typeof(setfflag) == "function" then
-            available = true
-        end
-    end)
-    return available
-end
-
-local function enableDesync()
-    if not Settings.EnableDesync then return false end
-    if not hasSetFFlag() then
-        print("⚠️ setfflag is NOT available - Desync disabled")
-        return false
-    end
-    
-    print("🔄 Enabling FFlag Desync...")
-    
-    -- Core desync flags
-    pcall(function()
-        setfflag("WorldStepMax", "-99999999999999")
-    end)
-    
-    pcall(function()
-        setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "-5000")
-        setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "-5000")
-    end)
-    
-    pcall(function()
-        setfflag("NextGenReplicatorEnabledWrite4", "true")
-        setfflag("LargeReplicatorWrite5", "true")
-        setfflag("LargeReplicatorEnabled9", "true")
-        setfflag("LargeReplicatorRead5", "true")
-    end)
-    
-    pcall(function()
-        setfflag("S2PhysicsSenderRate", "15000")
-        setfflag("PhysicsSenderMaxBandwidthBps", "20000")
-    end)
-    
-    pcall(function()
-        setfflag("MaxTimestepMultiplierContstraint", "2147483647")
-        setfflag("MaxTimestepMultiplierBuoyancy", "2147483647")
-        setfflag("MaxTimestepMultiplierAcceleration", "2147483647")
-    end)
-    
-    pcall(function()
-        setfflag("ReplicationFocusNouExtentsSizeCutoffForPauseStuds", "2147483647")
-    end)
-    
-    pcall(function()
-        setfflag("InterpolationFrameVelocityThresholdMillionth", "5")
-        setfflag("InterpolationFrameRotVelocityThresholdMillionth", "5")
-        setfflag("InterpolationFramePositionThresholdMillionth", "5")
-    end)
-    
-    pcall(function()
-        setfflag("MaxMissedWorldStepsRemembered", "-2147483648")
-    end)
-    
-    DesyncState.isActive = true
-    print("   ✅ Desync ACTIVE - Other players see you frozen!")
-    return true
-end
-
-local function disableDesync()
-    if not hasSetFFlag() then return end
-    
-    print("🔄 Disabling Desync...")
-    
-    pcall(function()
-        setfflag("WorldStepMax", "30")
-    end)
-    
-    pcall(function()
-        setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "0")
-        setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "0")
-    end)
-    
-    pcall(function()
-        setfflag("NextGenReplicatorEnabledWrite4", "false")
-    end)
-    
-    DesyncState.isActive = false
-    print("   ✅ Desync disabled - You are synced again")
-end
-
-local function toggleDesync()
-    if DesyncState.isActive then
-        disableDesync()
-    else
-        enableDesync()
-    end
-    return DesyncState.isActive
-end
-
--- Global function for external access
-_G.ToggleDesync = toggleDesync
-_G.EnableDesync = enableDesync
-_G.DisableDesync = disableDesync
-_G.IsDesyncActive = function() return DesyncState.isActive end
-
-----------------------------------------------------------------
 -- 🚀 RUN ALL OPTIMIZATIONS
 ----------------------------------------------------------------
 local function runAllOptimizations()
@@ -655,26 +541,10 @@ local function runAllOptimizations()
     disable3DRendering()
     createFPSCounter()
     
-    -- AUTO-START DESYNC
-    if Settings.DesyncAutoStart then
-        enableDesync()
-    end
-    
     print("\n" .. string.rep("=", 50))
     print("✅ FPS BOOSTER - All Optimizations Applied!")
-    print("🔄 DESYNC: " .. (DesyncState.isActive and "ACTIVE ✅" or "OFF ❌"))
-    print("📋 Keybinds: F1=3D, F2=BlackScreen, F5=Desync")
     print(string.rep("=", 50) .. "\n")
 end
-
--- Add F5 keybind for Desync toggle
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    
-    if input.KeyCode == Enum.KeyCode.F5 then
-        toggleDesync()
-    end
-end)
 
 -- RUN
 runAllOptimizations()

@@ -136,7 +136,7 @@ local QUEST_CONFIG = {
             "^Deathaxe Skeleton%d+$",
             "^Skeleton Rogue%d+$",
         },
-        MONSTER_UNDERGROUND_OFFSET = 6,
+        MONSTER_UNDERGROUND_OFFSET = 8,
         MONSTER_MAX_DISTANCE = 50,
     },
 
