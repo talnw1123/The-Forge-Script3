@@ -637,7 +637,8 @@ local function triggerDesyncRespawn()
 end
 
 -- Track respawns for Desync activation
-local desyncRespawnCount = 0
+-- If character already exists, count it as first spawn
+local desyncRespawnCount = player.Character and 1 or 0
 
 -- Set global flag so Loader.lua knows Desync is enabled
 if Settings.EnableDesync then
