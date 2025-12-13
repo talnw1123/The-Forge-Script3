@@ -524,6 +524,134 @@ local function createFPSCounter()
 end
 
 ----------------------------------------------------------------
+-- 🔄 DESYNC - FFLAG + AUTO RESPAWN
+----------------------------------------------------------------
+local DesyncState = {
+    fflagsApplied = false,
+    isReady = false,
+}
+
+local function hasSetFFlag()
+    local available = false
+    pcall(function()
+        if typeof(setfflag) == "function" then
+            available = true
+        end
+    end)
+    return available
+end
+
+local function applyDesyncFFlags()
+    if not Settings.EnableDesync then return false end
+    if not hasSetFFlag() then
+        print("⚠️ [DESYNC] setfflag not available!")
+        return false
+    end
+    
+    if DesyncState.fflagsApplied then return true end
+    
+    print("🔄 [DESYNC] Applying FFlags...")
+    
+    -- GameNet PV Headers
+    pcall(function()
+        setfflag("GameNetPVHeaderRotationalVelocityZeroCutoffExponent", "-5000")
+        setfflag("GameNetPVHeaderLinearVelocityZeroCutoffExponent", "-5000")
+    end)
+    
+    -- LargeReplicator
+    pcall(function()
+        setfflag("LargeReplicatorWrite5", "true")
+        setfflag("LargeReplicatorEnabled9", "true")
+        setfflag("LargeReplicatorRead5", "true")
+    end)
+    
+    -- NextGenReplicator
+    pcall(function()
+        setfflag("NextGenReplicatorEnabledWrite4", "true")
+    end)
+    
+    -- Timestep
+    pcall(function()
+        setfflag("MaxTimestepMultiplierContstraint", "2147483647")
+        setfflag("MaxTimestepMultiplierBuoyancy", "2147483647")
+        setfflag("MaxTimestepMultiplierAcceleration", "2147483647")
+    end)
+    
+    -- Interpolation
+    pcall(function()
+        setfflag("InterpolationFrameVelocityThresholdMillionth", "5")
+        setfflag("InterpolationFrameRotVelocityThresholdMillionth", "5")
+    end)
+    
+    DesyncState.fflagsApplied = true
+    print("   ✅ [DESYNC] FFlags applied!")
+    return true
+end
+
+local function triggerDesyncRespawn()
+    if not Settings.EnableDesync or not Settings.DesyncAutoRespawn then return end
+    if not DesyncState.fflagsApplied then return end
+    
+    print("🔄 [DESYNC] Triggering auto respawn...")
+    
+    local character = player.Character
+    if not character then return end
+    
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    local savedPos = hrp and hrp.CFrame or nil
+    
+    -- Method 1: replicatesignal (most reliable)
+    local hasReplicateSignal = false
+    pcall(function()
+        if typeof(replicatesignal) == "function" then
+            hasReplicateSignal = true
+        end
+    end)
+    
+    if hasReplicateSignal then
+        print("   💀 Using replicatesignal(Kill)...")
+        pcall(function()
+            replicatesignal(player.Kill)
+        end)
+    else
+        -- Fallback methods
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Dead) end)
+        end
+        pcall(function() character:BreakJoints() end)
+    end
+    
+    -- Wait for respawn and restore position
+    task.spawn(function()
+        local newChar = player.CharacterAdded:Wait()
+        if savedPos then
+            local newHrp = newChar:WaitForChild("HumanoidRootPart", 5)
+            if newHrp then
+                task.wait(0.5)
+                newHrp.CFrame = savedPos
+                print("   📍 [DESYNC] Position restored!")
+            end
+        end
+    end)
+end
+
+-- Track respawns for Desync activation
+local desyncRespawnCount = 0
+player.CharacterAdded:Connect(function(char)
+    desyncRespawnCount = desyncRespawnCount + 1
+    
+    task.wait(0.5)
+    
+    if DesyncState.fflagsApplied and desyncRespawnCount > 1 then
+        DesyncState.isReady = true
+        print("🎉 [DESYNC] ====================================")
+        print("🎉 [DESYNC] DESYNC ACTIVATED AFTER RESPAWN!")
+        print("🎉 [DESYNC] ====================================")
+    end
+end)
+
+----------------------------------------------------------------
 -- 🚀 RUN ALL OPTIMIZATIONS
 ----------------------------------------------------------------
 local function runAllOptimizations()
@@ -545,8 +673,21 @@ local function runAllOptimizations()
     disable3DRendering()
     createFPSCounter()
     
+    -- DESYNC: Apply FFlags and trigger respawn
+    if Settings.EnableDesync then
+        applyDesyncFFlags()
+        task.delay(1, function()
+            if player.Character then
+                triggerDesyncRespawn()
+            end
+        end)
+    end
+    
     print("\n" .. string.rep("=", 50))
     print("✅ FPS BOOSTER - All Optimizations Applied!")
+    if Settings.EnableDesync then
+        print("🔄 DESYNC: FFlags applied, respawning to activate...")
+    end
     print(string.rep("=", 50) .. "\n")
 end
 
