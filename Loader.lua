@@ -119,6 +119,26 @@ if CONFIG.LOAD_FPS_BOOSTER then
     
     if fpsSuccess then
         print("✅ FPS Booster loaded!")
+        
+        -- 🔄 WAIT FOR DESYNC RESPAWN TO COMPLETE
+        if _G.DesyncEnabled then
+            print("\n🔄 Waiting for Desync to activate...")
+            
+            -- Wait for Desync to be ready (max 20 seconds)
+            local desyncWaitStart = tick()
+            while not _G.DesyncReady and (tick() - desyncWaitStart) < 20 do
+                task.wait(0.5)
+            end
+            
+            if _G.DesyncReady then
+                print("✅ Desync activated!")
+                print("⏳ Waiting 15 seconds before starting quests...")
+                task.wait(15)
+                print("✅ Wait complete! Starting quest system...")
+            else
+                print("⚠️ Desync timeout, continuing anyway...")
+            end
+        end
     else
         warn("⚠️ Failed to load FPS Booster: " .. tostring(fpsError))
         warn("   URL: " .. fpsUrl)

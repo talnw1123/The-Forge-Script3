@@ -638,6 +638,13 @@ end
 
 -- Track respawns for Desync activation
 local desyncRespawnCount = 0
+
+-- Set global flag so Loader.lua knows Desync is enabled
+if Settings.EnableDesync then
+    _G.DesyncEnabled = true
+    _G.DesyncReady = false
+end
+
 player.CharacterAdded:Connect(function(char)
     desyncRespawnCount = desyncRespawnCount + 1
     
@@ -645,6 +652,7 @@ player.CharacterAdded:Connect(function(char)
     
     if DesyncState.fflagsApplied and desyncRespawnCount > 1 then
         DesyncState.isReady = true
+        _G.DesyncReady = true  -- Signal to Loader.lua that Desync is ready
         print("🎉 [DESYNC] ====================================")
         print("🎉 [DESYNC] DESYNC ACTIVATED AFTER RESPAWN!")
         print("🎉 [DESYNC] ====================================")
