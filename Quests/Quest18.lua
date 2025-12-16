@@ -104,21 +104,20 @@ end
 -- GOLD & PICKAXE HELPERS (for Arcane Purchase)
 ----------------------------------------------------------------
 local function getGold()
-    local gui = player:FindFirstChild("PlayerGui")
+    -- Wait for playerGui
+    local gui = player:WaitForChild("PlayerGui", 5)
     if not gui then 
         print("   [DEBUG] PlayerGui not found!")
         return 0 
     end
 
-    -- Wait for UI to load (after teleport)
+    -- Use same path as Quest19: playerGui.Main.Screen.Hud.Gold
     local goldLabel = nil
     for i = 1, 10 do  -- Retry up to 10 times
         goldLabel = gui:FindFirstChild("Main")
-                          and gui.Main:FindFirstChild("Screen")
-                          and gui.Main.Screen:FindFirstChild("Hud")
-                          and gui.Main.Screen.Hud:FindFirstChild("Currency")
-                          and gui.Main.Screen.Hud.Currency:FindFirstChild("Gold")
-                          and gui.Main.Screen.Hud.Currency.Gold:FindFirstChild("Amount")
+                    and gui.Main:FindFirstChild("Screen")
+                    and gui.Main.Screen:FindFirstChild("Hud")
+                    and gui.Main.Screen.Hud:FindFirstChild("Gold")
         
         if goldLabel then break end
         print(string.format("   [DEBUG] Waiting for Gold UI... (%d/10)", i))
@@ -126,8 +125,9 @@ local function getGold()
     end
 
     if goldLabel and goldLabel:IsA("TextLabel") then
-        local goldText = goldLabel.Text:gsub(",", "")
-        local gold = tonumber(goldText) or 0
+        local goldText = goldLabel.Text
+        local goldString = string.gsub(goldText, "[$,]", "")
+        local gold = tonumber(goldString) or 0
         print(string.format("   [DEBUG] Gold read: %d", gold))
         return gold
     end
