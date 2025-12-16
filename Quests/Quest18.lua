@@ -105,19 +105,34 @@ end
 ----------------------------------------------------------------
 local function getGold()
     local gui = player:FindFirstChild("PlayerGui")
-    if not gui then return 0 end
+    if not gui then 
+        print("   [DEBUG] PlayerGui not found!")
+        return 0 
+    end
 
-    local goldLabel = gui:FindFirstChild("Main")
-                      and gui.Main:FindFirstChild("Screen")
-                      and gui.Main.Screen:FindFirstChild("Hud")
-                      and gui.Main.Screen.Hud:FindFirstChild("Currency")
-                      and gui.Main.Screen.Hud.Currency:FindFirstChild("Gold")
-                      and gui.Main.Screen.Hud.Currency.Gold:FindFirstChild("Amount")
+    -- Wait for UI to load (after teleport)
+    local goldLabel = nil
+    for i = 1, 10 do  -- Retry up to 10 times
+        goldLabel = gui:FindFirstChild("Main")
+                          and gui.Main:FindFirstChild("Screen")
+                          and gui.Main.Screen:FindFirstChild("Hud")
+                          and gui.Main.Screen.Hud:FindFirstChild("Currency")
+                          and gui.Main.Screen.Hud.Currency:FindFirstChild("Gold")
+                          and gui.Main.Screen.Hud.Currency.Gold:FindFirstChild("Amount")
+        
+        if goldLabel then break end
+        print(string.format("   [DEBUG] Waiting for Gold UI... (%d/10)", i))
+        task.wait(0.5)
+    end
 
     if goldLabel and goldLabel:IsA("TextLabel") then
         local goldText = goldLabel.Text:gsub(",", "")
-        return tonumber(goldText) or 0
+        local gold = tonumber(goldText) or 0
+        print(string.format("   [DEBUG] Gold read: %d", gold))
+        return gold
     end
+    
+    print("   [DEBUG] Gold label not found!")
     return 0
 end
 
