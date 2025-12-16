@@ -39,11 +39,37 @@ local QUEST_CONFIG = {
 
     -- Priority 2.5: Auto Buy Magma Pickaxe (Gold >= 150k)
     MAGMA_PICKAXE_CONFIG = {
-        ENABLED = false,  -- 🔴 DISABLED: User requested to turn off
+        ENABLED = true,   -- � ENABLED + Monster Killing Mode
         TARGET_PICKAXE = "Magma Pickaxe",
         MIN_GOLD_TO_BUY = 150000,
         SELL_SHOP_POSITION = Vector3.new(-115.1, 22.3, -92.3),  -- ขาย Weapon/Armor
         BUY_SHOP_POSITION = Vector3.new(378, 88.6, 109.6),       -- ซื้อ Magma Pickaxe
+    },
+
+    -- Priority 2.4: Auto Buy Arcane Pickaxe (Gold >= 128k) - Before Magma
+    ARCANE_PICKAXE_CONFIG = {
+        ENABLED = true,
+        TARGET_PICKAXE = "Arcane Pickaxe",
+        MIN_GOLD_TO_BUY = 128000,
+        BUY_POSITION = Vector3.new(235.24, -13.43, -335.97),
+        TELEPORT_TO_BUY = "Stonewake's Cross",   -- Island1 (to buy Arcane)
+        TELEPORT_BACK = "Forgotten Kingdom",      -- Island2 (return after purchase)
+    },
+
+    -- Priority 2.5: Arcane Mode (Monster Killing after Arcane Pickaxe - NO Ore/Forge)
+    ARCANE_MODE_CONFIG = {
+        ENABLED = true,
+        MONSTER_PATTERNS = {"^Axe Skeleton%d+$", "^Bomber%d+$", "^Deathaxe Skeleton%d+$", "^Skeleton Rogue%d+$"},
+        MONSTER_UNDERGROUND_OFFSET = 8,
+        MONSTER_MAX_DISTANCE = 50,
+    },
+
+    -- Priority 2.7: Magma Mode (Monster Killing after Magma Pickaxe - NO Ore/Forge)
+    MAGMA_MODE_CONFIG = {
+        ENABLED = true,
+        MONSTER_PATTERNS = {"^Axe Skeleton%d+$", "^Bomber%d+$", "^Deathaxe Skeleton%d+$", "^Skeleton Rogue%d+$"},
+        MONSTER_UNDERGROUND_OFFSET = 8,
+        MONSTER_MAX_DISTANCE = 50,
     },
 
     -- Priority 2.8: Stash Capacity Check
@@ -468,7 +494,113 @@ local function hasPickaxe(pickaxeName)
 end
 
 ----------------------------------------------------------------
--- ORE PROTECTION CHECK (uses hasPickaxe)
+-- PICKAXE PRIORITY & EQUIP SYSTEM (Magma > Cobalt)
+----------------------------------------------------------------
+local function isPickaxeEquipped(pickaxeName)
+    -- Check UI: PlayerGui.Menu.Frame.Frame.Menus.Tools.Frame.[PickaxeName].Equip.Text
+    local menu = playerGui:FindFirstChild("Menu")
+    if not menu then return false, false end
+
+    local ok, pickaxeGui = pcall(function()
+        return menu.Frame.Frame.Menus.Tools.Frame:FindFirstChild(pickaxeName)
+    end)
+
+    if not ok or not pickaxeGui then
+        return false, false -- ไม่มี Pickaxe นี้
+    end
+
+    -- เช็ค Equip button text
+    local equipBtn = pickaxeGui:FindFirstChild("Equip")
+    if equipBtn and equipBtn:IsA("TextButton") then
+        -- "Unequip" = กำลังใช้งาน, "Equip" = ยังไม่ใช้
+        local isEquipped = (equipBtn.Text == "Unequip")
+        if DEBUG_MODE then
+            print(string.format("[Q19] Pickaxe '%s' - hasIt: true, isEquipped: %s (Button: %s)", 
+                pickaxeName, tostring(isEquipped), equipBtn.Text))
+        end
+        return true, isEquipped -- hasPickaxe, isEquipped
+    end
+
+    return true, false -- มี แต่ไม่รู้ status
+end
+
+local function equipPickaxeByName(pickaxeName)
+    -- Equip Pickaxe via CHAR_RF with correct format
+    if not CHAR_RF then
+        warn("[Q19] CHAR_RF not available for equip!")
+        return false
+    end
+
+    local args = {
+        {
+            Runes = {
+                {IsEmpty = true},
+                {IsEmpty = true}
+            },
+            Name = pickaxeName
+        }
+    }
+
+    local success, result = pcall(function()
+        return CHAR_RF:InvokeServer(unpack(args))
+    end)
+
+    if success then
+        print(string.format("   ⚡ Equipped %s", pickaxeName))
+        return true
+    else
+        warn(string.format("   ❌ Failed to equip %s: %s", pickaxeName, tostring(result)))
+        return false
+    end
+end
+
+local function getBestPickaxe()
+    -- Priority: Magma > Arcane > Cobalt
+    local pickaxePriority = {
+        {name = "Magma Pickaxe", tier = 3},
+        {name = "Arcane Pickaxe", tier = 2.5},
+        {name = "Cobalt Pickaxe", tier = 2},
+    }
+
+    for _, pickaxe in ipairs(pickaxePriority) do
+        local hasIt, isEquipped = isPickaxeEquipped(pickaxe.name)
+        if hasIt then
+            if DEBUG_MODE then
+                print(string.format("[Q19] 🏆 Best Pickaxe: %s (Tier %d, Equipped: %s)", 
+                    pickaxe.name, pickaxe.tier, tostring(isEquipped)))
+            end
+            return pickaxe.name, hasIt, isEquipped, pickaxe.tier
+        end
+    end
+
+    return nil, false, false, 0
+end
+
+local function ensureBestPickaxeEquipped()
+    local bestName, hasIt, isEquipped, tier = getBestPickaxe()
+    
+    if not hasIt then
+        if DEBUG_MODE then
+            print("[Q19] ⚠️ No priority pickaxe found (Magma/Cobalt)")
+        end
+        return nil, false
+    end
+
+    if not isEquipped then
+        print(string.format("   🔄 Auto-equipping best pickaxe: %s", bestName))
+        equipPickaxeByName(bestName)
+        task.wait(0.5)
+        
+        -- Verify
+        local _, nowEquipped = isPickaxeEquipped(bestName)
+        return bestName, nowEquipped
+    end
+
+    return bestName, true
+end
+
+----------------------------------------------------------------
+-- ORE PROTECTION CHECK (checks EQUIPPED pickaxe, not just owned)
 ----------------------------------------------------------------
 local function isOreProtected(oreName)
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
@@ -476,8 +608,9 @@ local function isOreProtected(oreName)
         return false
     end
 
-    -- Only protect ores when have Cobalt Pickaxe
-    if not hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
+    -- Only protect ores when Cobalt Pickaxe is EQUIPPED (not Magma)
+    local _, cobaltEquipped = isPickaxeEquipped(QUEST_CONFIG.TARGET_PICKAXE)
+    if not cobaltEquipped then
         return false
     end
 
@@ -2301,6 +2434,118 @@ local function doCobaltModeRoutine()
 end
 
 ----------------------------------------------------------------
+-- MAGMA MODE: MONSTER KILLING (NO Ore Collection / NO Forge)
+----------------------------------------------------------------
+local function doMagmaModeRoutine()
+    local config = QUEST_CONFIG.MAGMA_MODE_CONFIG
+    if not config or not config.ENABLED then return false end
+
+    -- Check if we have Magma Pickaxe
+    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
+    local hasIt, isEquipped = isPickaxeEquipped(magmaName)
+
+    if not hasIt then
+        return false -- No Magma Pickaxe, continue with other modes
+    end
+
+    print("\n" .. string.rep("=", 60))
+    print("🔥 MAGMA MODE: Starting Monster Killing...")
+    print(string.rep("=", 60))
+
+    -- Pause mining if active
+    local wasMining = IsMiningActive
+    if wasMining then
+        State.isPaused = true
+        print("   ⏸️ Pausing mining for Magma Mode...")
+        if ToolController then
+            ToolController.holdingM1 = false
+        end
+        unlockPosition()
+        task.wait(1)
+    end
+
+    -- Equip Magma Pickaxe if not equipped (optional, for pickaxe tool switch)
+    if not isEquipped then
+        print("   ⚡ Equipping Magma Pickaxe...")
+        equipPickaxeByName(magmaName)
+        task.wait(0.5)
+    end
+
+    -- Find and equip best weapon for combat
+    local weaponKey, weaponName = findWeaponSlotKey()
+    if weaponKey and weaponName then
+        print(string.format("   ⚔️ Switching to weapon: %s", weaponName))
+        pressKey(weaponKey)
+        task.wait(0.5)
+    else
+        print("   ⚠️ No weapon found in hotbar, will use current tool")
+    end
+
+    -- Start monster killing loop
+    print("   ✅ Starting Monster Killing (Magma Mode)...")
+    State.isPaused = false
+    doKillMonsters()
+    
+    return true
+end
+
+----------------------------------------------------------------
+-- ARCANE MODE: MONSTER KILLING (NO Ore Collection / NO Forge)
+----------------------------------------------------------------
+local function doArcaneModeRoutine()
+    local config = QUEST_CONFIG.ARCANE_MODE_CONFIG
+    if not config or not config.ENABLED then return false end
+
+    -- Check if we have Arcane Pickaxe
+    local arcaneName = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG.TARGET_PICKAXE
+    local hasIt, isEquipped = isPickaxeEquipped(arcaneName)
+
+    if not hasIt then
+        return false -- No Arcane Pickaxe, continue with other modes
+    end
+
+    print("\n" .. string.rep("=", 60))
+    print("💜 ARCANE MODE: Starting Monster Killing...")
+    print(string.rep("=", 60))
+
+    -- Pause mining if active
+    local wasMining = IsMiningActive
+    if wasMining then
+        State.isPaused = true
+        print("   ⏸️ Pausing mining for Arcane Mode...")
+        if ToolController then
+            ToolController.holdingM1 = false
+        end
+        unlockPosition()
+        task.wait(1)
+    end
+
+    -- Equip Arcane Pickaxe if not equipped
+    if not isEquipped then
+        print("   ⚡ Equipping Arcane Pickaxe...")
+        equipPickaxeByName(arcaneName)
+        task.wait(0.5)
+    end
+
+    -- Find and equip best weapon for combat
+    local weaponKey, weaponName = findWeaponSlotKey()
+    if weaponKey and weaponName then
+        print(string.format("   ⚔️ Switching to weapon: %s", weaponName))
+        pressKey(weaponKey)
+        task.wait(0.5)
+    else
+        print("   ⚠️ No weapon found in hotbar, will use current tool")
+    end
+
+    -- Start monster killing loop
+    print("   ✅ Starting Monster Killing (Arcane Mode)...")
+    State.isPaused = false
+    doKillMonsters()
+    
+    return true
+end
+
+----------------------------------------------------------------
 -- HELPER: Find Weapon Slot Key
 ----------------------------------------------------------------
 local function findWeaponSlotKey()
@@ -2555,6 +2800,77 @@ local function teleportToIsland(islandName)
         warn(string.format("   ❌ Failed: %s", tostring(result)))
         return false
     end
+end
+
+----------------------------------------------------------------
+-- ISLAND DETECTION (for Arcane Pickaxe purchase)
+----------------------------------------------------------------
+local function getCurrentIsland()
+    if not FORGES_FOLDER then return nil end
+    
+    for _, child in ipairs(FORGES_FOLDER:GetChildren()) do
+        if child:IsA("Folder") or child:IsA("Model") then
+            if string.match(child.Name, "Island%d+") then
+                return child.Name
+            end
+        end
+    end
+    return nil
+end
+
+----------------------------------------------------------------
+-- ARCANE PICKAXE AUTO-BUY TASK (Teleport to Island1 only - Quest18 does the purchase)
+----------------------------------------------------------------
+local function startArcaneBuyTask()
+    local config = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG
+    if not config or not config.ENABLED then return end
+    
+    task.spawn(function()
+        while Quest19Active do
+            -- Check if already have Arcane Pickaxe
+            if hasPickaxe(config.TARGET_PICKAXE) then
+                print("   💜 Already have Arcane Pickaxe!")
+                break  -- Already have, stop task
+            end
+            
+            local gold = getGold()
+            if gold >= config.MIN_GOLD_TO_BUY then
+                print("\n" .. string.rep("=", 50))
+                print("💜 ARCANE PICKAXE: Need to buy! Teleporting to Island1...")
+                print(string.rep("=", 50))
+                
+                -- Pause current activities
+                State.isPaused = true
+                if ToolController then
+                    ToolController.holdingM1 = false
+                end
+                unlockPosition()
+                disableNoclip()
+                task.wait(1)
+                
+                -- Check current island
+                local currentIsland = getCurrentIsland()
+                print(string.format("   📍 Current Island: %s", tostring(currentIsland)))
+                
+                if currentIsland == "Island2" then
+                    print("   🌀 Teleporting to Island1 (Stonewake's Cross)...")
+                    print("   📝 Quest18 will handle the purchase and return!")
+                    teleportToIsland(config.TELEPORT_TO_BUY)
+                    -- Script will re-inject on Island1, Quest18 will buy Arcane
+                    return  -- Stop this task, Quest18 takes over
+                else
+                    print("   ✅ Already on Island1")
+                    State.isPaused = false
+                end
+            end
+            
+            task.wait(15)  -- Check every 15 seconds
+        end
+        
+        print("💜 Arcane Buy Task ended")
+    end)
+    
+    print("   💜 Arcane Buy Task started (checking every 15s)")
 end
 
 ----------------------------------------------------------------
@@ -2956,11 +3272,51 @@ end
 print("\n🔍 Priority 2: Starting Background Tasks...")
 startAutoSellTask()
 startAutoBuyTask()
+startArcaneBuyTask()  -- Arcane Pickaxe (Gold >= 128k)
 startMagmaBuyTask()
 startStashCheckTask()
 
--- Priority 3: Mining
-print("\n🔍 Priority 3: Starting Mining...")
+-- Priority 3: Mode Selection (Magma Mode > Arcane Mode > Cobalt Mode > Mining)
+print("\n🔍 Priority 3: Checking Mode...")
+
+-- 🔥 Magma Mode: Monster Killing (if have Magma Pickaxe)
+if QUEST_CONFIG.MAGMA_MODE_CONFIG and QUEST_CONFIG.MAGMA_MODE_CONFIG.ENABLED then
+    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
+    local hasIt, _ = isPickaxeEquipped(magmaName)
+    if hasIt then
+        print("   🔥 Magma Pickaxe detected → Starting Magma Mode!")
+        doMagmaModeRoutine()
+        -- After Magma Mode ends, continue to mining
+    end
+end
+
+-- 💜 Arcane Mode: Monster Killing (if have Arcane Pickaxe, no Magma)
+if QUEST_CONFIG.ARCANE_MODE_CONFIG and QUEST_CONFIG.ARCANE_MODE_CONFIG.ENABLED then
+    local arcaneName = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG.TARGET_PICKAXE
+    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
+    local hasArcane, _ = isPickaxeEquipped(arcaneName)
+    local hasMagma, _ = isPickaxeEquipped(magmaName)
+    if hasArcane and not hasMagma then
+        print("   💜 Arcane Pickaxe detected → Starting Arcane Mode!")
+        doArcaneModeRoutine()
+        -- After Arcane Mode ends, continue to mining
+    end
+end
+
+-- 💎 Cobalt Mode: Ore Collection + Forge + Monster Killing
+if QUEST_CONFIG.COBALT_MODE_CONFIG and QUEST_CONFIG.COBALT_MODE_CONFIG.ENABLED then
+    local cobaltName = QUEST_CONFIG.TARGET_PICKAXE
+    if hasPickaxe(cobaltName) then
+        -- Check for existing rare weapon or enough ores
+        local rareDone = doCobaltModeRoutine()
+        if rareDone then
+            print("   💎 Cobalt Mode completed!")
+        end
+    end
+end
+
+-- ⛏️ Mining (Basalt Rock / Basalt Core)
+print("\n🔍 Starting Mining...")
 doMineBasaltRock()
 
 Quest19Active = false

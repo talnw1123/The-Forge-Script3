@@ -39,9 +39,30 @@ pcall(function()
     PORTAL_RF = SERVICES:WaitForChild("PortalService", 5):WaitForChild("RF", 3):WaitForChild("TeleportToIsland", 3)
 end)
 
+local PURCHASE_RF = nil
+pcall(function()
+    PURCHASE_RF = SERVICES:WaitForChild("ProximityService", 5):WaitForChild("RF", 3):WaitForChild("Purchase", 3)
+end)
+
+local FUNCTIONALS_RF = nil
+pcall(function()
+    FUNCTIONALS_RF = SERVICES:WaitForChild("ProximityService", 5):WaitForChild("RF", 3):WaitForChild("Functionals", 3)
+end)
+
 local FORGES_FOLDER = Workspace:WaitForChild("Forges")
 
+-- 💜 ARCANE PICKAXE CONFIG
+local ARCANE_CONFIG = {
+    ENABLED = true,
+    TARGET_PICKAXE = "Arcane Pickaxe",
+    MIN_GOLD = 128000,
+    DOOR_POSITION = Vector3.new(237.66, -13.87, -259.91),  -- Position to open door
+    BUY_POSITION = Vector3.new(235.24, -13.43, -335.97),   -- Position to buy
+}
+
 if PORTAL_RF then print("✅ Portal Remote Ready!") else warn("⚠️ Portal Remote not found") end
+if PURCHASE_RF then print("✅ Purchase Remote Ready!") else warn("⚠️ Purchase Remote not found") end
+if FUNCTIONALS_RF then print("✅ Functionals Remote Ready!") else warn("⚠️ Functionals Remote not found") end
 
 ----------------------------------------------------------------
 -- LEVEL SYSTEM
@@ -77,6 +98,118 @@ local function hasRequiredLevel()
         print(string.format("   ⏸️  Level %d < %d", level, QUEST_CONFIG.REQUIRED_LEVEL))
         return false
     end
+end
+
+----------------------------------------------------------------
+-- GOLD & PICKAXE HELPERS (for Arcane Purchase)
+----------------------------------------------------------------
+local function getGold()
+    local gui = player:FindFirstChild("PlayerGui")
+    if not gui then return 0 end
+
+    local goldLabel = gui:FindFirstChild("Main")
+                      and gui.Main:FindFirstChild("Screen")
+                      and gui.Main.Screen:FindFirstChild("Hud")
+                      and gui.Main.Screen.Hud:FindFirstChild("Currency")
+                      and gui.Main.Screen.Hud.Currency:FindFirstChild("Gold")
+                      and gui.Main.Screen.Hud.Currency.Gold:FindFirstChild("Amount")
+
+    if goldLabel and goldLabel:IsA("TextLabel") then
+        local goldText = goldLabel.Text:gsub(",", "")
+        return tonumber(goldText) or 0
+    end
+    return 0
+end
+
+local function hasPickaxe(pickaxeName)
+    local menu = playerGui:FindFirstChild("Menu")
+    if not menu then return false end
+
+    local ok, toolsFrame = pcall(function()
+        return menu.Frame.Frame.Menus.Tools.Frame
+    end)
+
+    if not ok or not toolsFrame then return false end
+
+    local gui = toolsFrame:FindFirstChild(pickaxeName)
+    return gui ~= nil
+end
+
+----------------------------------------------------------------
+-- MOVEMENT SYSTEM (for Arcane Shop)
+----------------------------------------------------------------
+local RunService = game:GetService("RunService")
+local positionLockConn = nil
+local noclipConn = nil
+
+local function enableNoclip()
+    if noclipConn then return end
+    noclipConn = RunService.Stepped:Connect(function()
+        local char = player.Character
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
+    end)
+end
+
+local function disableNoclip()
+    if noclipConn then
+        noclipConn:Disconnect()
+        noclipConn = nil
+    end
+end
+
+local function smoothMoveTo(targetPos, onComplete)
+    local char = player.Character
+    if not char then 
+        if onComplete then onComplete() end
+        return 
+    end
+
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then
+        if onComplete then onComplete() end
+        return
+    end
+
+    enableNoclip()
+
+    local moveSpeed = 80
+    local threshold = 3
+
+    if positionLockConn then
+        positionLockConn:Disconnect()
+        positionLockConn = nil
+    end
+
+    positionLockConn = RunService.Heartbeat:Connect(function()
+        char = player.Character
+        if not char then return end
+        hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+
+        local currentPos = hrp.Position
+        local direction = (targetPos - currentPos)
+        local distance = direction.Magnitude
+
+        if distance < threshold then
+            hrp.CFrame = CFrame.new(targetPos)
+            if positionLockConn then
+                positionLockConn:Disconnect()
+                positionLockConn = nil
+            end
+            disableNoclip()
+            if onComplete then onComplete() end
+            return
+        end
+
+        local moveStep = direction.Unit * math.min(moveSpeed * 0.016, distance)
+        hrp.CFrame = CFrame.new(currentPos + moveStep)
+    end)
 end
 
 ----------------------------------------------------------------
@@ -139,11 +272,113 @@ local function teleportToIsland(islandName)
 end
 
 ----------------------------------------------------------------
+-- 💜 ARCANE PICKAXE PURCHASE
+----------------------------------------------------------------
+local function buyArcanePickaxe()
+    if not ARCANE_CONFIG.ENABLED then return false end
+    
+    -- Check if already have Arcane
+    if hasPickaxe(ARCANE_CONFIG.TARGET_PICKAXE) then
+        print("   💜 Already have Arcane Pickaxe!")
+        return true
+    end
+    
+    -- Check Gold
+    local gold = getGold()
+    print(string.format("   💰 Current Gold: %d (Need: %d)", gold, ARCANE_CONFIG.MIN_GOLD))
+    
+    if gold < ARCANE_CONFIG.MIN_GOLD then
+        print("   ⚠️ Not enough gold for Arcane Pickaxe")
+        return false
+    end
+    
+    print("\n" .. string.rep("=", 50))
+    print("💜 ARCANE PICKAXE: Starting purchase...")
+    print(string.rep("=", 50))
+    
+    -- 🚪 STEP 1: Move to door and open it
+    print(string.format("   🚪 Moving to door (%.1f, %.1f, %.1f)...", 
+        ARCANE_CONFIG.DOOR_POSITION.X, ARCANE_CONFIG.DOOR_POSITION.Y, ARCANE_CONFIG.DOOR_POSITION.Z))
+    
+    local doorComplete = false
+    smoothMoveTo(ARCANE_CONFIG.DOOR_POSITION, function()
+        doorComplete = true
+    end)
+    
+    local t0 = tick()
+    while not doorComplete and tick() - t0 < 60 do
+        task.wait(0.1)
+    end
+    
+    if not doorComplete then
+        warn("   ⚠️ Move to door timeout!")
+        disableNoclip()
+        return false
+    end
+    
+    print("   ✅ Arrived at door!")
+    print("   ⏳ Waiting 3 seconds before opening door...")
+    task.wait(3)
+    
+    -- Open the door
+    print("   🚪 Opening FallenAngelCaveDoor...")
+    pcall(function()
+        local doorArgs = {Workspace:WaitForChild("Proximity"):WaitForChild("FallenAngelCaveDoor")}
+        FUNCTIONALS_RF:InvokeServer(unpack(doorArgs))
+    end)
+    
+    print("   ✅ Door opened!")
+    task.wait(1)
+    
+    -- 🛒 STEP 2: Move to shop
+    print(string.format("   🚀 Moving to shop (%.1f, %.1f, %.1f)...", 
+        ARCANE_CONFIG.BUY_POSITION.X, ARCANE_CONFIG.BUY_POSITION.Y, ARCANE_CONFIG.BUY_POSITION.Z))
+    
+    local moveComplete = false
+    smoothMoveTo(ARCANE_CONFIG.BUY_POSITION, function()
+        moveComplete = true
+    end)
+    
+    t0 = tick()
+    while not moveComplete and tick() - t0 < 60 do
+        task.wait(0.1)
+    end
+    
+    if not moveComplete then
+        warn("   ⚠️ Move timeout!")
+        disableNoclip()
+        return false
+    end
+    
+    print("   ✅ Arrived at shop!")
+    print("   ⏳ Waiting 3 seconds...")
+    task.wait(3)
+    
+    -- Purchase
+    print("   🛒 Purchasing Arcane Pickaxe...")
+    local args = {ARCANE_CONFIG.TARGET_PICKAXE, 1}
+    pcall(function()
+        PURCHASE_RF:InvokeServer(unpack(args))
+    end)
+    
+    task.wait(1)
+    
+    -- Verify
+    if hasPickaxe(ARCANE_CONFIG.TARGET_PICKAXE) then
+        print("   ✅ Arcane Pickaxe purchased successfully!")
+        return true
+    else
+        warn("   ❌ Purchase may have failed!")
+        return false
+    end
+end
+
+----------------------------------------------------------------
 -- SMART QUEST RUNNER
 ----------------------------------------------------------------
 print(string.rep("=", 50))
 print("🚀 QUEST 18: " .. QUEST_CONFIG.QUEST_NAME)
-print("🎯 Objective: Teleport to Forgotten Kingdom")
+print("🎯 Objective: Buy Arcane + Teleport to Forgotten Kingdom")
 print(string.rep("=", 50))
 
 -- Check Level
@@ -154,8 +389,12 @@ if not hasRequiredLevel() then
     return
 end
 
--- Check if teleport needed
-print("\n🔍 Checking Location...")
+-- 💜 STEP 1: Try to buy Arcane Pickaxe first
+print("\n🔍 Step 1: Checking Arcane Pickaxe...")
+buyArcanePickaxe()
+
+-- 🌀 STEP 2: Teleport to Island2
+print("\n🔍 Step 2: Checking Location...")
 if needsTeleport() then
     print("   ⚠️ Not on target island!")
     local success = teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
