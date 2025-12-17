@@ -194,7 +194,9 @@ local function smoothMoveTo(targetPos, onComplete)
     enableNoclip()
 
     local moveSpeed = 80
-    local threshold = 3
+    local Y_THRESHOLD = 3
+    local XZ_THRESHOLD = 3
+    local phase = 1  -- 1 = Y-axis first, 2 = XZ-axis
 
     if positionLockConn then
         positionLockConn:Disconnect()
@@ -208,22 +210,41 @@ local function smoothMoveTo(targetPos, onComplete)
         if not hrp then return end
 
         local currentPos = hrp.Position
-        local direction = (targetPos - currentPos)
-        local distance = direction.Magnitude
 
-        if distance < threshold then
-            hrp.CFrame = CFrame.new(targetPos)
-            if positionLockConn then
-                positionLockConn:Disconnect()
-                positionLockConn = nil
+        if phase == 1 then
+            -- Phase 1: Move Y first (vertical)
+            local yDiff = math.abs(targetPos.Y - currentPos.Y)
+            
+            if yDiff < Y_THRESHOLD then
+                -- Y is close enough, move to phase 2
+                phase = 2
+                print("   ✅ Y-axis reached, moving to XZ...")
+            else
+                -- Move vertically only
+                local yDirection = Vector3.new(0, targetPos.Y - currentPos.Y, 0)
+                local moveStep = yDirection.Unit * math.min(moveSpeed * 0.016, yDiff)
+                hrp.CFrame = CFrame.new(currentPos + moveStep)
             end
-            disableNoclip()
-            if onComplete then onComplete() end
-            return
-        end
+        else
+            -- Phase 2: Move XZ (horizontal) and fine-tune Y
+            local direction = (targetPos - currentPos)
+            local distance = direction.Magnitude
 
-        local moveStep = direction.Unit * math.min(moveSpeed * 0.016, distance)
-        hrp.CFrame = CFrame.new(currentPos + moveStep)
+            if distance < XZ_THRESHOLD then
+                hrp.CFrame = CFrame.new(targetPos)
+                if positionLockConn then
+                    positionLockConn:Disconnect()
+                    positionLockConn = nil
+                end
+                disableNoclip()
+                print("   ✅ Reached destination!")
+                if onComplete then onComplete() end
+                return
+            end
+
+            local moveStep = direction.Unit * math.min(moveSpeed * 0.016, distance)
+            hrp.CFrame = CFrame.new(currentPos + moveStep)
+        end
     end)
 end
 

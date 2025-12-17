@@ -497,7 +497,7 @@ end
 -- PICKAXE PRIORITY & EQUIP SYSTEM (Magma > Cobalt)
 ----------------------------------------------------------------
 local function isPickaxeEquipped(pickaxeName)
-    -- Check UI: PlayerGui.Menu.Frame.Frame.Menus.Tools.Frame.[PickaxeName].Equip.Text
+    -- Check UI: PlayerGui.Menu.Frame.Frame.Menus.Tools.Frame.[PickaxeName].Equip.TextLabel
     local menu = playerGui:FindFirstChild("Menu")
     if not menu then return false, false end
 
@@ -509,14 +509,24 @@ local function isPickaxeEquipped(pickaxeName)
         return false, false -- ไม่มี Pickaxe นี้
     end
 
-    -- เช็ค Equip button text
+    -- เช็ค Equip button -> TextLabel ข้างใน
     local equipBtn = pickaxeGui:FindFirstChild("Equip")
-    if equipBtn and equipBtn:IsA("TextButton") then
+    if equipBtn then
+        -- Text อยู่ใน TextLabel ข้างใน Equip button
+        local textLabel = equipBtn:FindFirstChild("TextLabel")
+        local buttonText = ""
+        
+        if textLabel and textLabel:IsA("TextLabel") then
+            buttonText = textLabel.Text
+        elseif equipBtn:IsA("TextButton") then
+            buttonText = equipBtn.Text
+        end
+        
         -- "Unequip" = กำลังใช้งาน, "Equip" = ยังไม่ใช้
-        local isEquipped = (equipBtn.Text == "Unequip")
+        local isEquipped = (buttonText == "Unequip")
         if DEBUG_MODE then
             print(string.format("[Q19] Pickaxe '%s' - hasIt: true, isEquipped: %s (Button: %s)", 
-                pickaxeName, tostring(isEquipped), equipBtn.Text))
+                pickaxeName, tostring(isEquipped), buttonText))
         end
         return true, isEquipped -- hasPickaxe, isEquipped
     end
@@ -525,7 +535,21 @@ local function isPickaxeEquipped(pickaxeName)
 end
 
 local function equipPickaxeByName(pickaxeName)
-    -- Equip Pickaxe via CHAR_RF with correct format
+    -- Check if already equipped first!
+    local hasIt, isEquipped = isPickaxeEquipped(pickaxeName)
+    
+    if not hasIt then
+        warn(string.format("[Q19] Cannot equip %s - not found!", pickaxeName))
+        return false
+    end
+    
+    -- ถ้า equipped อยู่แล้ว (UI แสดง "Unequip") → ไม่ต้องเรียก remote
+    if isEquipped then
+        print(string.format("   ⚡ %s already equipped (skipping remote)", pickaxeName))
+        return true
+    end
+    
+    -- ยังไม่ equipped → เรียก remote
     if not CHAR_RF then
         warn("[Q19] CHAR_RF not available for equip!")
         return false
