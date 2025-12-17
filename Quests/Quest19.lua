@@ -1558,18 +1558,16 @@ local function startMagmaBuyTask()
 
     State.magmaBuyTask = task.spawn(function()
         while Quest19Active do
-            task.wait(30) -- Check every 30 seconds
+            task.wait(15) -- Check every 15 seconds
 
             if State.isPaused then
                 continue
             end
 
-            -- Only try if we have Cobalt Pickaxe already
-            if hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
-                pcall(function()
-                    tryBuyMagmaPickaxe()
-                end)
-            end
+            -- Try to buy Magma Pickaxe
+            pcall(function()
+                tryBuyMagmaPickaxe()
+            end)
         end
     end)
 end
