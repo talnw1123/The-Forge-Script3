@@ -154,18 +154,30 @@ end
 -- MOVEMENT SYSTEM (for Arcane Shop)
 ----------------------------------------------------------------
 local RunService = game:GetService("RunService")
-local positionLockConn = nil
+local moveConn = nil
 local noclipConn = nil
+local bodyVelocity = nil
+local bodyGyro = nil
+
+local MOVE_SPEED = 80
+local Y_THRESHOLD = 3
+local XZ_THRESHOLD = 3
 
 local function enableNoclip()
     if noclipConn then return end
+    
+    local char = player.Character
+    if not char then return end
+    
     noclipConn = RunService.Stepped:Connect(function()
-        local char = player.Character
-        if char then
-            for _, part in pairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
+        if not char or not char.Parent then
+            if noclipConn then noclipConn:Disconnect() noclipConn = nil end
+            return
+        end
+        
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
             end
         end
     end)
@@ -180,34 +192,68 @@ end
 
 local function smoothMoveTo(targetPos, onComplete)
     local char = player.Character
-    if not char then 
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then 
         if onComplete then onComplete() end
         return 
     end
 
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then
-        if onComplete then onComplete() end
-        return
-    end
+    -- Cleanup previous
+    if moveConn then moveConn:Disconnect() moveConn = nil end
+    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
 
     enableNoclip()
 
-    local moveSpeed = 80
-    local Y_THRESHOLD = 3
-    local XZ_THRESHOLD = 3
-    local phase = 1  -- 1 = Y-axis first, 2 = XZ-axis
+    -- Create BodyVelocity
+    local bv = Instance.new("BodyVelocity")
+    bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bv.Parent = hrp
+    bodyVelocity = bv
 
-    if positionLockConn then
-        positionLockConn:Disconnect()
-        positionLockConn = nil
-    end
+    -- Create BodyGyro
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P = 10000
+    bg.D = 500
+    bg.Parent = hrp
+    bodyGyro = bg
 
-    positionLockConn = RunService.Heartbeat:Connect(function()
-        char = player.Character
-        if not char then return end
-        hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
+    print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
+
+    local reachedTarget = false
+    local phase = 1 -- 1 = Y-axis first, 2 = XZ-axis
+
+    moveConn = RunService.Heartbeat:Connect(function()
+        if reachedTarget then return end
+
+        -- Check if character or BodyVelocity is destroyed
+        if not char or not char.Parent or not hrp or not hrp.Parent then
+            if moveConn then moveConn:Disconnect() moveConn = nil end
+            if bv and bv.Parent then bv:Destroy() end
+            if bg and bg.Parent then bg:Destroy() end
+            bodyVelocity = nil
+            bodyGyro = nil
+            return
+        end
+
+        -- Recreate BodyVelocity if destroyed
+        if not bv or not bv.Parent then
+            bv = Instance.new("BodyVelocity")
+            bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+            bv.Parent = hrp
+            bodyVelocity = bv
+        end
+
+        -- Recreate BodyGyro if destroyed
+        if not bg or not bg.Parent then
+            bg = Instance.new("BodyGyro")
+            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            bg.P = 10000
+            bg.D = 500
+            bg.Parent = hrp
+            bodyGyro = bg
+        end
 
         local currentPos = hrp.Position
 
@@ -216,14 +262,13 @@ local function smoothMoveTo(targetPos, onComplete)
             local yDiff = math.abs(targetPos.Y - currentPos.Y)
             
             if yDiff < Y_THRESHOLD then
-                -- Y is close enough, move to phase 2
                 phase = 2
                 print("   ✅ Y-axis reached, moving to XZ...")
             else
-                -- Move vertically only
                 local yDirection = Vector3.new(0, targetPos.Y - currentPos.Y, 0)
-                local moveStep = yDirection.Unit * math.min(moveSpeed * 0.016, yDiff)
-                hrp.CFrame = CFrame.new(currentPos + moveStep)
+                local speed = math.min(MOVE_SPEED, yDiff * 10)
+                bv.Velocity = yDirection.Unit * speed
+                bg.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
             end
         else
             -- Phase 2: Move XZ (horizontal) and fine-tune Y
@@ -231,19 +276,33 @@ local function smoothMoveTo(targetPos, onComplete)
             local distance = direction.Magnitude
 
             if distance < XZ_THRESHOLD then
-                hrp.CFrame = CFrame.new(targetPos)
-                if positionLockConn then
-                    positionLockConn:Disconnect()
-                    positionLockConn = nil
-                end
-                disableNoclip()
                 print("   ✅ Reached destination!")
+
+                reachedTarget = true
+
+                bv.Velocity = Vector3.zero
+                hrp.Velocity = Vector3.zero
+                hrp.AssemblyLinearVelocity = Vector3.zero
+
+                task.wait(0.1)
+
+                if bv and bv.Parent then bv:Destroy() end
+                if bg and bg.Parent then bg:Destroy() end
+                bodyVelocity = nil
+                bodyGyro = nil
+
+                if moveConn then moveConn:Disconnect() moveConn = nil end
+                disableNoclip()
+
                 if onComplete then onComplete() end
                 return
             end
 
-            local moveStep = direction.Unit * math.min(moveSpeed * 0.016, distance)
-            hrp.CFrame = CFrame.new(currentPos + moveStep)
+            local speed = math.min(MOVE_SPEED, distance * 10)
+            local velocity = direction.Unit * speed
+
+            bv.Velocity = velocity
+            bg.CFrame = CFrame.lookAt(currentPos, targetPos)
         end
     end)
 end
