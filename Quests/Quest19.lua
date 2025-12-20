@@ -1808,33 +1808,39 @@ local function mineDemoniteRoutine()
                         if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
                             local rock = child:FindFirstChild(config.ROCK_NAME)
                             if rock then
-                                local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
-                                local dist = (rockPos - hrp.Position).Magnitude
-                                if dist < minDist then
-                                    minDist = dist
-                                    targetRock = rock
+                                local rockPos = getRockUndergroundPosition(rock)
+                                if rockPos then
+                                    local dist = (rockPos - hrp.Position).Magnitude
+                                    if dist < minDist then
+                                        minDist = dist
+                                        targetRock = rock
+                                    end
                                 end
                             end
                         end
                         
                         -- Also check if child itself is the rock (fallback)
                         if child.Name == config.ROCK_NAME then
-                            local rockPos = child.PrimaryPart and child.PrimaryPart.Position or child.Position
-                            local dist = (rockPos - hrp.Position).Magnitude
-                            if dist < minDist then
-                                minDist = dist
-                                targetRock = child
+                            local rockPos = getRockUndergroundPosition(child)
+                            if rockPos then
+                                local dist = (rockPos - hrp.Position).Magnitude
+                                if dist < minDist then
+                                    minDist = dist
+                                    targetRock = child
+                                end
                             end
                         end
                         
                         -- Check any nested child (additional fallback)
                         local rock = child:FindFirstChild(config.ROCK_NAME)
                         if rock then
-                            local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
-                            local dist = (rockPos - hrp.Position).Magnitude
-                            if dist < minDist then
-                                minDist = dist
-                                targetRock = rock
+                            local rockPos = getRockUndergroundPosition(rock)
+                            if rockPos then
+                                local dist = (rockPos - hrp.Position).Magnitude
+                                if dist < minDist then
+                                    minDist = dist
+                                    targetRock = rock
+                                end
                             end
                         end
                     end
