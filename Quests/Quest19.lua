@@ -72,6 +72,34 @@ local QUEST_CONFIG = {
         MONSTER_MAX_DISTANCE = 50,
     },
 
+    -- Priority 2.75: Auto Buy Demonic Pickaxe (Gold >= 500k + Skal Quest)
+    DEMONIC_PICKAXE_CONFIG = {
+        ENABLED = true,
+        TARGET_PICKAXE = "Demonic Pickaxe",
+        MIN_GOLD = 500000,
+        NPC_POSITION = Vector3.new(715.37, 46.64, 104.28),
+        
+        -- Mining for Demonite
+        ROCK_NAME = "Volcanic Rock",
+        REQUIRED_ORE = "Demonite",
+        REQUIRED_COUNT = 3,
+        MINING_PATHS = {
+            "Island2CaveStart",
+            "Island2CaveDanger1",
+            "Island2CaveDanger2",
+            "Island2CaveDanger3",
+            "Island2CaveDanger4",
+            "Island2CaveDangerClosed",
+            "Island2CaveDeep",
+            "Island2CaveLavaClosed",
+            "Island2CaveMid",
+            "Island2VolcanicDepths",  -- New path for Volcanic Rock
+        },
+        
+        -- Protected ores when Magma Pickaxe is equipped
+        PROTECTED_ORES = {"Demonite", "Darkryte"},
+    },
+
     -- Priority 2.8: Stash Capacity Check
     STASH_CHECK_CONFIG = {
         ENABLED = true,
@@ -579,8 +607,9 @@ local function equipPickaxeByName(pickaxeName)
 end
 
 local function getBestPickaxe()
-    -- Priority: Magma > Arcane > Cobalt
+    -- Priority: Demonic > Magma > Arcane > Cobalt
     local pickaxePriority = {
+        {name = "Demonic Pickaxe", tier = 4},
         {name = "Magma Pickaxe", tier = 3},
         {name = "Arcane Pickaxe", tier = 2.5},
         {name = "Cobalt Pickaxe", tier = 2},
@@ -627,20 +656,29 @@ end
 -- ORE PROTECTION CHECK (checks EQUIPPED pickaxe, not just owned)
 ----------------------------------------------------------------
 local function isOreProtected(oreName)
-    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
-    if not config or not config.ENABLED then
-        return false
+    -- Check Cobalt Pickaxe protection (Diamond, Quartz, Amethyst)
+    local cobaltConfig = QUEST_CONFIG.COBALT_MODE_CONFIG
+    if cobaltConfig and cobaltConfig.ENABLED then
+        local _, cobaltEquipped = isPickaxeEquipped(QUEST_CONFIG.TARGET_PICKAXE)
+        if cobaltEquipped then
+            for _, protectedOre in ipairs(cobaltConfig.PROTECTED_ORES) do
+                if oreName == protectedOre then
+                    return true
+                end
+            end
+        end
     end
-
-    -- Only protect ores when Cobalt Pickaxe is EQUIPPED (not Magma)
-    local _, cobaltEquipped = isPickaxeEquipped(QUEST_CONFIG.TARGET_PICKAXE)
-    if not cobaltEquipped then
-        return false
-    end
-
-    for _, protectedOre in ipairs(config.PROTECTED_ORES) do
-        if oreName == protectedOre then
-            return true
+    
+    -- Check Magma Pickaxe protection (Demonite, Darkryte)
+    local demonicConfig = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if demonicConfig and demonicConfig.ENABLED then
+        local _, magmaEquipped = isPickaxeEquipped("Magma Pickaxe")
+        if magmaEquipped then
+            for _, protectedOre in ipairs(demonicConfig.PROTECTED_ORES) do
+                if oreName == protectedOre then
+                    return true
+                end
+            end
         end
     end
 
@@ -1019,18 +1057,15 @@ local function sellAllFromUI()
 
     local basket = getStashItemsUI()
 
-    -- 🛡️ Cobalt Mode: Skip protected ores (Diamond, Quartz, Amethyst)
-    local config = QUEST_CONFIG.COBALT_MODE_CONFIG
-    local hasCobaltPickaxe = hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE)
-
-    if hasCobaltPickaxe and config and config.ENABLED then
-        for _, protectedOre in ipairs(config.PROTECTED_ORES) do
-            if basket[protectedOre] and basket[protectedOre] > 0 then
-                if DEBUG_MODE then
-                    print(string.format("   🛡️ Protected ore skipped: %s (x%d)", protectedOre, basket[protectedOre]))
-                end
-                basket[protectedOre] = nil
+    -- 🛡️ Use isOreProtected() to skip protected ores based on EQUIPPED pickaxe
+    -- Cobalt equipped → protect Diamond, Quartz, Amethyst
+    -- Magma equipped → protect Demonite, Darkryte
+    for oreName, count in pairs(basket) do
+        if count > 0 and isOreProtected(oreName) then
+            if DEBUG_MODE then
+                print(string.format("   🛡️ Protected ore skipped: %s (x%d)", oreName, count))
             end
+            basket[oreName] = nil
         end
     end
 
@@ -1569,6 +1604,387 @@ local function startMagmaBuyTask()
                 tryBuyMagmaPickaxe()
             end)
         end
+    end)
+end
+
+----------------------------------------------------------------
+-- 😈 DEMONIC PICKAXE AUTO-BUY SYSTEM (Skal Quest)
+----------------------------------------------------------------
+
+-- Check if Skal Quest is active
+local function hasSkalQuest()
+    local questTitle = playerGui:FindFirstChild("Main")
+        and playerGui.Main:FindFirstChild("Screen")
+        and playerGui.Main.Screen:FindFirstChild("Quests")
+        and playerGui.Main.Screen.Quests:FindFirstChild("List")
+        and playerGui.Main.Screen.Quests.List:FindFirstChild("SkalQuestTitle")
+    
+    return questTitle ~= nil
+end
+
+-- Get Demonite count from inventory
+local function getDemoniteCount()
+    local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if not config then return 0 end
+    
+    local inventory = getPlayerInventory()
+    return inventory[config.REQUIRED_ORE] or 0
+end
+
+-- Accept Skal Quest
+local function acceptSkalQuest()
+    local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if not config then return false end
+    
+    print("\n" .. string.rep("=", 50))
+    print("😈 DEMONIC QUEST: Accepting Skal Quest...")
+    print(string.rep("=", 50))
+    
+    -- Move to NPC
+    print(string.format("   🚶 Moving to Skal NPC (%.1f, %.1f, %.1f)...", 
+        config.NPC_POSITION.X, config.NPC_POSITION.Y, config.NPC_POSITION.Z))
+    
+    local moveComplete = false
+    smoothMoveTo(config.NPC_POSITION, function()
+        moveComplete = true
+    end)
+    
+    local t0 = tick()
+    while not moveComplete and tick() - t0 < 60 do
+        task.wait(0.1)
+    end
+    
+    if not moveComplete then
+        warn("   ⚠️ Move to NPC timeout!")
+        return false
+    end
+    
+    print("   ✅ Arrived at Skal NPC!")
+    print("   ⏳ Waiting 3 seconds...")
+    task.wait(3)
+    
+    -- Open dialogue
+    print("   💬 Opening dialogue with Skal...")
+    pcall(function()
+        local args = {Workspace:WaitForChild("Proximity"):WaitForChild("Skal")}
+        ProximityDialogueRF:InvokeServer(unpack(args))
+    end)
+    task.wait(0.5)
+    
+    -- Accept quest
+    print("   📜 Accepting Skal Quest...")
+    pcall(function()
+        local args = {"GiveSkalQuest"}
+        DIALOGUE_RF:InvokeServer(unpack(args))
+    end)
+    
+    print("   ⏳ Waiting 2 seconds...")
+    task.wait(2)
+    
+    -- Clear UI
+    print("   🧹 Clearing dialogue UI...")
+    pcall(function()
+        if DialogueRE then
+            DialogueRE:FireServer("Closed")
+        end
+    end)
+    task.wait(0.5)
+    
+    -- Verify
+    if hasSkalQuest() then
+        print("   ✅ Skal Quest accepted successfully!")
+        return true
+    else
+        warn("   ⚠️ Quest may not have been accepted")
+        return false
+    end
+end
+
+-- Complete Skal Quest (exchange Demonite for key)
+local function completeSkalQuest()
+    local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if not config then return false end
+    
+    print("\n" .. string.rep("=", 50))
+    print("😈 DEMONIC QUEST: Completing Skal Quest...")
+    print(string.rep("=", 50))
+    
+    -- Move to NPC
+    print(string.format("   🚶 Moving to Skal NPC (%.1f, %.1f, %.1f)...", 
+        config.NPC_POSITION.X, config.NPC_POSITION.Y, config.NPC_POSITION.Z))
+    
+    local moveComplete = false
+    smoothMoveTo(config.NPC_POSITION, function()
+        moveComplete = true
+    end)
+    
+    local t0 = tick()
+    while not moveComplete and tick() - t0 < 60 do
+        task.wait(0.1)
+    end
+    
+    if not moveComplete then
+        warn("   ⚠️ Move to NPC timeout!")
+        return false
+    end
+    
+    print("   ✅ Arrived at Skal NPC!")
+    print("   ⏳ Waiting 3 seconds...")
+    task.wait(3)
+    
+    -- Open dialogue
+    print("   💬 Opening dialogue with Skal...")
+    pcall(function()
+        local args = {Workspace:WaitForChild("Proximity"):WaitForChild("Skal")}
+        ProximityDialogueRF:InvokeServer(unpack(args))
+    end)
+    task.wait(0.5)
+    
+    -- Finish quest
+    print("   📜 Finishing Quest (exchanging Demonite for key)...")
+    pcall(function()
+        local args = {"FinishQuest"}
+        DIALOGUE_RF:InvokeServer(unpack(args))
+    end)
+    
+    print("   ⏳ Waiting 2 seconds...")
+    task.wait(2)
+    
+    -- Clear UI
+    print("   🧹 Clearing dialogue UI...")
+    pcall(function()
+        if DialogueRE then
+            DialogueRE:FireServer("Closed")
+        end
+    end)
+    task.wait(0.5)
+    
+    -- Quest should be gone now
+    if not hasSkalQuest() then
+        print("   ✅ Skal Quest completed! Key received!")
+        print("   ⏸️ Waiting for door remote to be added...")
+        return true
+    else
+        warn("   ⚠️ Quest may not have been completed")
+        return false
+    end
+end
+
+-- Mine Volcanic Rock for Demonite
+local function mineDemoniteRoutine()
+    local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if not config then return false end
+    
+    print("\n" .. string.rep("=", 50))
+    print("⛏️ DEMONIC QUEST: Mining for Demonite...")
+    print(string.rep("=", 50))
+    
+    local requiredCount = config.REQUIRED_COUNT
+    local currentCount = getDemoniteCount()
+    
+    print(string.format("   💎 Demonite: %d/%d", currentCount, requiredCount))
+    
+    if currentCount >= requiredCount then
+        print("   ✅ Already have enough Demonite!")
+        return true
+    end
+    
+    -- Enable mining state
+    IsMiningActive = true
+    enableNoclip()
+    
+    -- Find and mine Volcanic Rock
+    while Quest19Active and getDemoniteCount() < requiredCount do
+        if State.isPaused then
+            task.wait(1)
+            continue
+        end
+        
+        -- Find Volcanic Rock
+        local targetRock = nil
+        local minDist = math.huge
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        
+        if hrp then
+            -- Search in MINING_PATHS
+            for _, pathName in ipairs(config.MINING_PATHS) do
+                local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
+                if pathFolder then
+                    for _, rock in ipairs(pathFolder:GetChildren()) do
+                        if rock.Name == config.ROCK_NAME and rock:FindFirstChild("Ore") then
+                            local dist = (rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position) - hrp.Position
+                            if dist.Magnitude < minDist then
+                                minDist = dist.Magnitude
+                                targetRock = rock
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if targetRock then
+            -- Mine the rock (similar to existing mining logic)
+            local rockPos = targetRock.PrimaryPart and targetRock.PrimaryPart.Position or targetRock.Position
+            local undergroundPos = Vector3.new(rockPos.X, rockPos.Y - QUEST_CONFIG.UNDERGROUND_OFFSET, rockPos.Z)
+            
+            -- Move to rock
+            local arrived = false
+            smoothMoveTo(undergroundPos, function() arrived = true end)
+            
+            local t0 = tick()
+            while not arrived and tick() - t0 < 30 do
+                task.wait(0.1)
+            end
+            
+            if arrived then
+                -- Start mining (hold M1)
+                if ToolController then
+                    ToolController.holdingM1 = true
+                end
+                
+                -- Wait until rock is mined or timeout
+                local mineStart = tick()
+                while targetRock and targetRock.Parent and tick() - mineStart < 20 do
+                    task.wait(0.5)
+                    currentCount = getDemoniteCount()
+                    if currentCount >= requiredCount then
+                        break
+                    end
+                end
+                
+                if ToolController then
+                    ToolController.holdingM1 = false
+                end
+            end
+        else
+            -- No rock found → stay in place and wait for rock to spawn
+            print("   ⏸️ No Volcanic Rock found, waiting for respawn...")
+            
+            -- Lock position at current location (hover in place)
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                local hoverPos = hrp.Position
+                lockPositionLayingDown(hoverPos)
+            end
+            
+            -- Wait until a Volcanic Rock spawns
+            local foundRock = false
+            while Quest19Active and not foundRock and getDemoniteCount() < requiredCount do
+                task.wait(0.5)
+                
+                -- Check for new rock
+                for _, pathName in ipairs(config.MINING_PATHS) do
+                    local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
+                    if pathFolder then
+                        for _, rock in ipairs(pathFolder:GetChildren()) do
+                            if rock.Name == config.ROCK_NAME and rock:FindFirstChild("Ore") then
+                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
+                                foundRock = true
+                                break
+                            end
+                        end
+                    end
+                    if foundRock then break end
+                end
+            end
+            
+            -- Unlock position to move to new rock
+            unlockPosition()
+        end
+        
+        -- Update count
+        currentCount = getDemoniteCount()
+        if currentCount >= requiredCount then
+            break
+        end
+    end
+    
+    IsMiningActive = false
+    disableNoclip()
+    
+    print(string.format("   💎 Demonite collected: %d/%d", getDemoniteCount(), requiredCount))
+    
+    return getDemoniteCount() >= requiredCount
+end
+
+-- Background task for Demonic Pickaxe
+local function startDemonicBuyTask()
+    local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
+    if not config or not config.ENABLED then
+        return
+    end
+
+    print("😈 Demonic Pickaxe Quest Task Started!")
+
+    State.demonicBuyTask = task.spawn(function()
+        while Quest19Active do
+            task.wait(15) -- Check every 15 seconds
+
+            if State.isPaused then
+                continue
+            end
+            
+            -- Skip if already have Demonic Pickaxe
+            if hasPickaxe(config.TARGET_PICKAXE) then
+                print("   😈 Already have Demonic Pickaxe!")
+                break
+            end
+            
+            -- Check Gold requirement
+            local gold = getGold()
+            if gold < config.MIN_GOLD then
+                continue
+            end
+            
+            print(string.format("\n😈 DEMONIC PICKAXE: Gold >= %d, starting quest flow...", config.MIN_GOLD))
+            
+            -- Pause other activities
+            State.isPaused = true
+            if ToolController then
+                ToolController.holdingM1 = false
+            end
+            unlockPosition()
+            task.wait(1)
+            
+            -- Step 1: Check/Accept Skal Quest
+            if not hasSkalQuest() then
+                local accepted = acceptSkalQuest()
+                if not accepted then
+                    warn("   ⚠️ Failed to accept quest, will retry...")
+                    State.isPaused = false
+                    task.wait(30)
+                    continue
+                end
+            else
+                print("   📜 Skal Quest already active!")
+            end
+            
+            -- Step 2: Mine Demonite
+            local minedEnough = mineDemoniteRoutine()
+            if not minedEnough then
+                print("   ⏸️ Not enough Demonite yet, will continue mining...")
+                State.isPaused = false
+                continue
+            end
+            
+            -- Step 3: Complete Quest
+            local completed = completeSkalQuest()
+            if completed then
+                print("\n" .. string.rep("=", 50))
+                print("😈 DEMONIC QUEST COMPLETE! Key obtained!")
+                print("   ⏸️ Waiting for door remote implementation...")
+                print(string.rep("=", 50))
+                -- TODO: Add door opening and Demonic Pickaxe purchase here
+            end
+            
+            State.isPaused = false
+            break -- Quest complete, stop task
+        end
+        
+        print("😈 Demonic Quest Task ended")
     end)
 end
 
@@ -2717,23 +3133,23 @@ local function checkMiningError()
     local notifFrame = screen:FindFirstChild("NotificationsFrame")
     if not notifFrame then return false end
 
-    -- Loop ALL TextFrame children in NotificationsFrame
-    -- Path: NotificationsFrame → TextFrame → TextFrame → TextLabel
-    for _, textFrame1 in ipairs(notifFrame:GetChildren()) do
-        if textFrame1.Name == "TextFrame" and textFrame1:IsA("Frame") then
-            local textFrame2 = textFrame1:FindFirstChild("TextFrame")
-            if textFrame2 then
-                local textLabel = textFrame2:FindFirstChild("TextLabel")
-                if textLabel and textLabel:IsA("TextLabel") then
-                    if string.find(textLabel.Text, "Someone else is already mining") then
-                        return true
-                    end
+    -- Recursive helper to find TextLabel with mining error
+    local function searchForMiningError(parent)
+        for _, child in ipairs(parent:GetChildren()) do
+            if child:IsA("TextLabel") then
+                if string.find(child.Text, "Someone else is already mining") then
+                    return true
+                end
+            elseif child:IsA("Frame") or child:IsA("GuiObject") then
+                if searchForMiningError(child) then
+                    return true
                 end
             end
         end
+        return false
     end
 
-    return false
+    return searchForMiningError(notifFrame)
 end
 
 ----------------------------------------------------------------
@@ -3296,6 +3712,7 @@ startAutoSellTask()
 startAutoBuyTask()
 startArcaneBuyTask()  -- Arcane Pickaxe (Gold >= 128k)
 startMagmaBuyTask()
+startDemonicBuyTask()  -- Demonic Pickaxe (Gold >= 500k + Skal Quest)
 startStashCheckTask()
 
 -- Priority 3: Mode Selection (Magma Mode > Arcane Mode > Cobalt Mode > Mining)
