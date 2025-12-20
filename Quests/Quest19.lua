@@ -1792,31 +1792,21 @@ local function mineDemoniteRoutine()
             continue
         end
         
-        -- Find Volcanic Rock
+        -- Find Volcanic Rock (using same pattern as findNearestBasaltRock)
         local targetRock = nil
         local minDist = math.huge
         local char = player.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         
         if hrp then
-            -- Search in MINING_PATHS (nested structure: Rocks.Path.[N].["Volcanic Rock"])
+            -- Search in MINING_PATHS using SpawnLocation pattern
             for _, pathName in ipairs(config.MINING_PATHS) do
                 local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
                 if pathFolder then
-                    for _, container in ipairs(pathFolder:GetChildren()) do
-                        -- Check direct children (old structure)
-                        if container.Name == config.ROCK_NAME then
-                            local rockPos = container.PrimaryPart and container.PrimaryPart.Position or container.Position
-                            local dist = (rockPos - hrp.Position).Magnitude
-                            if dist < minDist then
-                                minDist = dist
-                                targetRock = container
-                            end
-                        end
-                        
-                        -- Check nested structure (Rocks.Path.[N].["Volcanic Rock"])
-                        if container:IsA("Model") or container:IsA("Folder") then
-                            local rock = container:FindFirstChild(config.ROCK_NAME)
+                    for _, child in ipairs(pathFolder:GetChildren()) do
+                        -- Check SpawnLocation containers (same as main mining)
+                        if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
+                            local rock = child:FindFirstChild(config.ROCK_NAME)
                             if rock then
                                 local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
                                 local dist = (rockPos - hrp.Position).Magnitude
@@ -1824,6 +1814,27 @@ local function mineDemoniteRoutine()
                                     minDist = dist
                                     targetRock = rock
                                 end
+                            end
+                        end
+                        
+                        -- Also check if child itself is the rock (fallback)
+                        if child.Name == config.ROCK_NAME then
+                            local rockPos = child.PrimaryPart and child.PrimaryPart.Position or child.Position
+                            local dist = (rockPos - hrp.Position).Magnitude
+                            if dist < minDist then
+                                minDist = dist
+                                targetRock = child
+                            end
+                        end
+                        
+                        -- Check any nested child (additional fallback)
+                        local rock = child:FindFirstChild(config.ROCK_NAME)
+                        if rock then
+                            local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
+                            local dist = (rockPos - hrp.Position).Magnitude
+                            if dist < minDist then
+                                minDist = dist
+                                targetRock = rock
                             end
                         end
                     end
@@ -1874,25 +1885,32 @@ local function mineDemoniteRoutine()
             while Quest19Active and not foundRock and getDemoniteCount() < requiredCount do
                 task.wait(1)  -- Check every second
                 
-                -- Check for new rock (nested structure: Rocks.Path.[N].["Volcanic Rock"])
+                -- Check for new rock (using SpawnLocation pattern)
                 for _, pathName in ipairs(config.MINING_PATHS) do
                     local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
                     if pathFolder then
-                        for _, container in ipairs(pathFolder:GetChildren()) do
-                            -- Check direct children
-                            if container.Name == config.ROCK_NAME then
-                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
-                                foundRock = true
-                                break
-                            end
-                            -- Check nested structure
-                            if container:IsA("Model") or container:IsA("Folder") then
-                                local rock = container:FindFirstChild(config.ROCK_NAME)
+                        for _, child in ipairs(pathFolder:GetChildren()) do
+                            -- Check SpawnLocation containers
+                            if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
+                                local rock = child:FindFirstChild(config.ROCK_NAME)
                                 if rock then
                                     print("   ✅ Volcanic Rock spawned! Moving to mine...")
                                     foundRock = true
                                     break
                                 end
+                            end
+                            -- Also check if child itself is the rock
+                            if child.Name == config.ROCK_NAME then
+                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
+                                foundRock = true
+                                break
+                            end
+                            -- Check nested child
+                            local rock = child:FindFirstChild(config.ROCK_NAME)
+                            if rock then
+                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
+                                foundRock = true
+                                break
                             end
                         end
                     end
