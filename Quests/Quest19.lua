@@ -1762,7 +1762,7 @@ local function completeSkalQuest()
     end
 end
 
--- Mine Volcanic Rock for Demonite
+-- Mine Volcanic Rock for Demonite (uses existing mining system)
 local function mineDemoniteRoutine()
     local config = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG
     if not config then return false end
@@ -1781,159 +1781,20 @@ local function mineDemoniteRoutine()
         return true
     end
     
-    -- Enable mining state
-    IsMiningActive = true
-    enableNoclip()
+    -- NOTE: This routine relies on the main mining loop to do the actual work
+    -- It just needs to ensure the player is mining in the volcanic area
+    -- The MINING_PATHS in DEMONIC_PICKAXE_CONFIG includes Island2VolcanicDepths
+    -- which will be picked up by findNearestBasaltRock when Magma Pickaxe is equipped
     
-    -- Find and mine Volcanic Rock
+    -- Simply wait while the main mining loop gathers Demonite
+    print("   ⏳ Monitoring Demonite collection...")
     while Quest19Active and getDemoniteCount() < requiredCount do
-        if State.isPaused then
-            task.wait(1)
-            continue
-        end
-        
-        -- Find Volcanic Rock (using same pattern as findNearestBasaltRock)
-        local targetRock = nil
-        local minDist = math.huge
-        local char = player.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        
-        if hrp then
-            -- Search in MINING_PATHS using SpawnLocation pattern
-            for _, pathName in ipairs(config.MINING_PATHS) do
-                local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
-                if pathFolder then
-                    for _, child in ipairs(pathFolder:GetChildren()) do
-                        -- Check SpawnLocation containers (same as main mining)
-                        if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
-                            local rock = child:FindFirstChild(config.ROCK_NAME)
-                            if rock then
-                                local rockPos = getRockUndergroundPosition(rock)
-                                if rockPos then
-                                    local dist = (rockPos - hrp.Position).Magnitude
-                                    if dist < minDist then
-                                        minDist = dist
-                                        targetRock = rock
-                                    end
-                                end
-                            end
-                        end
-                        
-                        -- Also check if child itself is the rock (fallback)
-                        if child.Name == config.ROCK_NAME then
-                            local rockPos = getRockUndergroundPosition(child)
-                            if rockPos then
-                                local dist = (rockPos - hrp.Position).Magnitude
-                                if dist < minDist then
-                                    minDist = dist
-                                    targetRock = child
-                                end
-                            end
-                        end
-                        
-                        -- Check any nested child (additional fallback)
-                        local rock = child:FindFirstChild(config.ROCK_NAME)
-                        if rock then
-                            local rockPos = getRockUndergroundPosition(rock)
-                            if rockPos then
-                                local dist = (rockPos - hrp.Position).Magnitude
-                                if dist < minDist then
-                                    minDist = dist
-                                    targetRock = rock
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        if targetRock then
-            -- Mine the rock (similar to existing mining logic)
-            local rockPos = targetRock.PrimaryPart and targetRock.PrimaryPart.Position or targetRock.Position
-            local undergroundPos = Vector3.new(rockPos.X, rockPos.Y - QUEST_CONFIG.UNDERGROUND_OFFSET, rockPos.Z)
-            
-            -- Move to rock
-            local arrived = false
-            smoothMoveTo(undergroundPos, function() arrived = true end)
-            
-            local t0 = tick()
-            while not arrived and tick() - t0 < 30 do
-                task.wait(0.1)
-            end
-            
-            if arrived then
-                -- Start mining (hold M1)
-                if ToolController then
-                    ToolController.holdingM1 = true
-                end
-                
-                -- Wait until rock is mined or timeout
-                local mineStart = tick()
-                while targetRock and targetRock.Parent and tick() - mineStart < 20 do
-                    task.wait(0.5)
-                    currentCount = getDemoniteCount()
-                    if currentCount >= requiredCount then
-                        break
-                    end
-                end
-                
-                if ToolController then
-                    ToolController.holdingM1 = false
-                end
-            end
-        else
-            -- No rock found → wait for rock to spawn
-            print("   ⏸️ No Volcanic Rock found, waiting for respawn...")
-            
-            -- Wait until a Volcanic Rock spawns
-            local foundRock = false
-            while Quest19Active and not foundRock and getDemoniteCount() < requiredCount do
-                task.wait(1)  -- Check every second
-                
-                -- Check for new rock (using SpawnLocation pattern)
-                for _, pathName in ipairs(config.MINING_PATHS) do
-                    local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
-                    if pathFolder then
-                        for _, child in ipairs(pathFolder:GetChildren()) do
-                            -- Check SpawnLocation containers
-                            if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
-                                local rock = child:FindFirstChild(config.ROCK_NAME)
-                                if rock then
-                                    print("   ✅ Volcanic Rock spawned! Moving to mine...")
-                                    foundRock = true
-                                    break
-                                end
-                            end
-                            -- Also check if child itself is the rock
-                            if child.Name == config.ROCK_NAME then
-                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
-                                foundRock = true
-                                break
-                            end
-                            -- Check nested child
-                            local rock = child:FindFirstChild(config.ROCK_NAME)
-                            if rock then
-                                print("   ✅ Volcanic Rock spawned! Moving to mine...")
-                                foundRock = true
-                                break
-                            end
-                        end
-                    end
-                    if foundRock then break end
-                end
-            end
-        end
-        
-        -- Update count
+        task.wait(2)
         currentCount = getDemoniteCount()
-        if currentCount >= requiredCount then
-            break
+        if currentCount > 0 then
+            print(string.format("   💎 Demonite: %d/%d", currentCount, requiredCount))
         end
     end
-    
-    IsMiningActive = false
-    disableNoclip()
     
     print(string.format("   💎 Demonite collected: %d/%d", getDemoniteCount(), requiredCount))
     
@@ -3404,11 +3265,19 @@ end
 
 -- Get current rock name and paths based on pickaxe
 local function getCurrentMiningConfig()
+    local demonicPickaxe = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG and QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.TARGET_PICKAXE or "Demonic Pickaxe"
     local magmaPickaxe = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG and QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE or "Magma Pickaxe"
     local cobaltPickaxe = QUEST_CONFIG.TARGET_PICKAXE or "Cobalt Pickaxe"
 
+    -- Check if we're doing Skal Quest (need Volcanic Rock for Demonite)
+    if hasSkalQuest and hasSkalQuest() and hasPickaxe(magmaPickaxe) then
+        print("   😈 Skal Quest active → Mining Volcanic Rock for Demonite")
+        return {
+            ROCK_NAME = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.ROCK_NAME,  -- "Volcanic Rock"
+            MINING_PATHS = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.MINING_PATHS,  -- includes Island2VolcanicDepths
+        }
     -- Tier 3: Magma Pickaxe → Basalt Core (User requested due to crowding at Vein)
-    if hasPickaxe(magmaPickaxe) then
+    elseif hasPickaxe(magmaPickaxe) then
         print("   🔥 Have Magma Pickaxe → Mining Basalt Core (Crowded Vein)")
         return {
             ROCK_NAME = QUEST_CONFIG.BASALT_CORE_CONFIG.ROCK_NAME,
@@ -3556,11 +3425,25 @@ local function doMineBasaltRock()
         local targetRock, dist, rockName = findNearestBasaltRock(State.currentTarget)
 
         if not targetRock then
-            warn(string.format("   ❌ No %s found!", rockName or "rocks"))
-            unlockPosition()
-            cleanupState()
-            task.wait(3)
-            continue
+            -- If doing Skal Quest, stay hovering and wait for Volcanic Rock to respawn
+            if hasSkalQuest and hasSkalQuest() then
+                print(string.format("   ⏸️ No %s found, hovering in place...", rockName or "Volcanic Rock"))
+                -- Keep position locked if already locked, otherwise lock current position
+                if not State.positionLockConn then
+                    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        lockPositionLayingDown(hrp.Position)
+                    end
+                end
+                task.wait(1)
+                continue
+            else
+                warn(string.format("   ❌ No %s found!", rockName or "rocks"))
+                unlockPosition()
+                cleanupState()
+                task.wait(3)
+                continue
+            end
         end
 
         local previousTarget = State.currentTarget
