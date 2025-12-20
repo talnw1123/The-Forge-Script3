@@ -1681,14 +1681,10 @@ local function acceptSkalQuest()
     print("   ⏳ Waiting 2 seconds...")
     task.wait(2)
     
-    -- Clear UI
-    print("   🧹 Clearing dialogue UI...")
-    pcall(function()
-        if DialogueRE then
-            DialogueRE:FireServer("Closed")
-        end
-    end)
-    task.wait(0.5)
+    -- Clear UI using proper function
+    print("   🚪 Closing dialogue...")
+    ForceEndDialogueAndRestore()
+    task.wait(1)
     
     -- Verify
     if hasSkalQuest() then
@@ -1750,14 +1746,10 @@ local function completeSkalQuest()
     print("   ⏳ Waiting 2 seconds...")
     task.wait(2)
     
-    -- Clear UI
-    print("   🧹 Clearing dialogue UI...")
-    pcall(function()
-        if DialogueRE then
-            DialogueRE:FireServer("Closed")
-        end
-    end)
-    task.wait(0.5)
+    -- Clear UI using proper function
+    print("   🚪 Closing dialogue...")
+    ForceEndDialogueAndRestore()
+    task.wait(1)
     
     -- Quest should be gone now
     if not hasSkalQuest() then
@@ -1807,16 +1799,31 @@ local function mineDemoniteRoutine()
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
         
         if hrp then
-            -- Search in MINING_PATHS
+            -- Search in MINING_PATHS (nested structure: Rocks.Path.[N].["Volcanic Rock"])
             for _, pathName in ipairs(config.MINING_PATHS) do
                 local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
                 if pathFolder then
-                    for _, rock in ipairs(pathFolder:GetChildren()) do
-                        if rock.Name == config.ROCK_NAME and rock:FindFirstChild("Ore") then
-                            local dist = (rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position) - hrp.Position
-                            if dist.Magnitude < minDist then
-                                minDist = dist.Magnitude
-                                targetRock = rock
+                    for _, container in ipairs(pathFolder:GetChildren()) do
+                        -- Check direct children (old structure)
+                        if container.Name == config.ROCK_NAME and container:FindFirstChild("Ore") then
+                            local rockPos = container.PrimaryPart and container.PrimaryPart.Position or container.Position
+                            local dist = (rockPos - hrp.Position).Magnitude
+                            if dist < minDist then
+                                minDist = dist
+                                targetRock = container
+                            end
+                        end
+                        
+                        -- Check nested structure (Rocks.Path.[N].["Volcanic Rock"])
+                        if container:IsA("Model") or container:IsA("Folder") then
+                            local rock = container:FindFirstChild(config.ROCK_NAME)
+                            if rock and rock:FindFirstChild("Ore") then
+                                local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
+                                local dist = (rockPos - hrp.Position).Magnitude
+                                if dist < minDist then
+                                    minDist = dist
+                                    targetRock = rock
+                                end
                             end
                         end
                     end
@@ -1875,15 +1882,25 @@ local function mineDemoniteRoutine()
             while Quest19Active and not foundRock and getDemoniteCount() < requiredCount do
                 task.wait(0.5)
                 
-                -- Check for new rock
+                -- Check for new rock (nested structure: Rocks.Path.[N].["Volcanic Rock"])
                 for _, pathName in ipairs(config.MINING_PATHS) do
                     local pathFolder = Workspace:FindFirstChild("Rocks") and Workspace.Rocks:FindFirstChild(pathName)
                     if pathFolder then
-                        for _, rock in ipairs(pathFolder:GetChildren()) do
-                            if rock.Name == config.ROCK_NAME and rock:FindFirstChild("Ore") then
+                        for _, container in ipairs(pathFolder:GetChildren()) do
+                            -- Check direct children
+                            if container.Name == config.ROCK_NAME and container:FindFirstChild("Ore") then
                                 print("   ✅ Volcanic Rock spawned! Moving to mine...")
                                 foundRock = true
                                 break
+                            end
+                            -- Check nested structure
+                            if container:IsA("Model") or container:IsA("Folder") then
+                                local rock = container:FindFirstChild(config.ROCK_NAME)
+                                if rock and rock:FindFirstChild("Ore") then
+                                    print("   ✅ Volcanic Rock spawned! Moving to mine...")
+                                    foundRock = true
+                                    break
+                                end
                             end
                         end
                     end
