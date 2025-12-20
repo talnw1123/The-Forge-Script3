@@ -2458,6 +2458,12 @@ local function lockPositionFollowMonster(targetMonster)
 end
 
 local function doKillMonsters()
+    -- PRIORITY: Skip Monster Killing if doing Skal Quest (Demonic Pickaxe mining)
+    if hasSkalQuest and hasSkalQuest() then
+        print("   ⏸️ Skal Quest active - skipping Monster Killing, mining Volcanic Rock instead")
+        return false
+    end
+    
     print("\n" .. string.rep("=", 60))
     print("⚔️ COBALT MODE: MONSTER KILLING")
     print(string.rep("=", 60))
@@ -2614,6 +2620,12 @@ local function doCobaltModeRoutine()
     local config = QUEST_CONFIG.COBALT_MODE_CONFIG
     if not config or not config.ENABLED then return false end
 
+    -- PRIORITY: Skip Cobalt Mode if doing Skal Quest (Demonic Pickaxe mining)
+    if hasSkalQuest and hasSkalQuest() then
+        print("   ⏸️ Skal Quest active - skipping Cobalt Mode, mining Volcanic Rock instead")
+        return false
+    end
+
     -- Check if we have Cobalt Pickaxe
     if not hasPickaxe(QUEST_CONFIG.TARGET_PICKAXE) then
         return false
@@ -2769,6 +2781,12 @@ local function doMagmaModeRoutine()
     local config = QUEST_CONFIG.MAGMA_MODE_CONFIG
     if not config or not config.ENABLED then return false end
 
+    -- PRIORITY: Skip Magma Mode if doing Skal Quest (Demonic Pickaxe mining)
+    if hasSkalQuest and hasSkalQuest() then
+        print("   ⏸️ Skal Quest active - skipping Magma Mode, mining Volcanic Rock instead")
+        return false
+    end
+
     -- Check if we have Magma Pickaxe
     local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
     local hasIt, isEquipped = isPickaxeEquipped(magmaName)
@@ -2824,6 +2842,12 @@ end
 local function doArcaneModeRoutine()
     local config = QUEST_CONFIG.ARCANE_MODE_CONFIG
     if not config or not config.ENABLED then return false end
+
+    -- PRIORITY: Skip Arcane Mode if doing Skal Quest (Demonic Pickaxe mining)
+    if hasSkalQuest and hasSkalQuest() then
+        print("   ⏸️ Skal Quest active - skipping Arcane Mode, mining Volcanic Rock instead")
+        return false
+    end
 
     -- Check if we have Arcane Pickaxe
     local arcaneName = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG.TARGET_PICKAXE
@@ -3628,46 +3652,63 @@ startMagmaBuyTask()
 startDemonicBuyTask()  -- Demonic Pickaxe (Gold >= 500k + Skal Quest)
 startStashCheckTask()
 
--- Priority 3: Mode Selection (Magma Mode > Arcane Mode > Cobalt Mode > Mining)
-print("\n🔍 Priority 3: Checking Mode...")
+-- Priority 3: Mode Selection (based on EQUIPPED Pickaxe)
+print("\n🔍 Priority 3: Checking Equipped Pickaxe for Mode Selection...")
 
--- 🔥 Magma Mode: Monster Killing (if have Magma Pickaxe)
-if QUEST_CONFIG.MAGMA_MODE_CONFIG and QUEST_CONFIG.MAGMA_MODE_CONFIG.ENABLED then
-    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
-    local hasIt, _ = isPickaxeEquipped(magmaName)
-    if hasIt then
-        print("   🔥 Magma Pickaxe detected → Starting Magma Mode!")
+-- Get pickaxe names
+local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
+local arcaneName = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG.TARGET_PICKAXE
+local cobaltName = QUEST_CONFIG.TARGET_PICKAXE
+
+-- Loop checking best equipped pickaxe
+while Quest19Active do
+    -- PRIORITY 0: Wait if Auto Buy is running
+    if State.isPaused then
+        print("   ⏸️ Auto Buy running, waiting...")
+        task.wait(1)
+        continue
+    end
+    
+    -- Check which pickaxe is EQUIPPED (not just owned)
+    local _, isMagmaEquipped = isPickaxeEquipped(magmaName)
+    local _, isArcaneEquipped = isPickaxeEquipped(arcaneName)
+    local _, isCobaltEquipped = isPickaxeEquipped(cobaltName)
+    
+    -- PRIORITY 1: Skal Quest (Demonic Pickaxe mining) overrides all modes
+    if hasSkalQuest and hasSkalQuest() then
+        print("   😈 Skal Quest active → Mining Volcanic Rock only")
+        break -- Exit mode selection, go to main mining
+    end
+    
+    -- 🔥 Magma Mode: if Magma Pickaxe is EQUIPPED
+    if isMagmaEquipped and QUEST_CONFIG.MAGMA_MODE_CONFIG and QUEST_CONFIG.MAGMA_MODE_CONFIG.ENABLED then
+        print("   🔥 Magma Pickaxe EQUIPPED → Starting Magma Mode!")
         doMagmaModeRoutine()
-        -- After Magma Mode ends, continue to mining
+        continue -- Re-check equipped pickaxe after mode ends
     end
-end
-
--- 💜 Arcane Mode: Monster Killing (if have Arcane Pickaxe, no Magma)
-if QUEST_CONFIG.ARCANE_MODE_CONFIG and QUEST_CONFIG.ARCANE_MODE_CONFIG.ENABLED then
-    local arcaneName = QUEST_CONFIG.ARCANE_PICKAXE_CONFIG.TARGET_PICKAXE
-    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
-    local hasArcane, _ = isPickaxeEquipped(arcaneName)
-    local hasMagma, _ = isPickaxeEquipped(magmaName)
-    if hasArcane and not hasMagma then
-        print("   💜 Arcane Pickaxe detected → Starting Arcane Mode!")
+    
+    -- 💜 Arcane Mode: if Arcane Pickaxe is EQUIPPED  
+    if isArcaneEquipped and QUEST_CONFIG.ARCANE_MODE_CONFIG and QUEST_CONFIG.ARCANE_MODE_CONFIG.ENABLED then
+        print("   💜 Arcane Pickaxe EQUIPPED → Starting Arcane Mode!")
         doArcaneModeRoutine()
-        -- After Arcane Mode ends, continue to mining
+        continue -- Re-check equipped pickaxe after mode ends
     end
-end
-
--- 💎 Cobalt Mode: Ore Collection + Forge + Monster Killing
-if QUEST_CONFIG.COBALT_MODE_CONFIG and QUEST_CONFIG.COBALT_MODE_CONFIG.ENABLED then
-    local cobaltName = QUEST_CONFIG.TARGET_PICKAXE
-    if hasPickaxe(cobaltName) then
-        -- Check for existing rare weapon or enough ores
+    
+    -- 💎 Cobalt Mode: if Cobalt Pickaxe is EQUIPPED
+    if isCobaltEquipped and QUEST_CONFIG.COBALT_MODE_CONFIG and QUEST_CONFIG.COBALT_MODE_CONFIG.ENABLED then
+        print("   💎 Cobalt Pickaxe EQUIPPED → Starting Cobalt Mode!")
         local rareDone = doCobaltModeRoutine()
         if rareDone then
             print("   💎 Cobalt Mode completed!")
         end
+        continue -- Re-check equipped pickaxe after mode ends
     end
+    
+    -- ⛏️ No special pickaxe equipped or modes disabled → Mining
+    break
 end
 
--- ⛏️ Mining (Basalt Rock / Basalt Core)
+-- ⛏️ Mining (Basalt Rock / Basalt Core / Volcanic Rock based on getCurrentMiningConfig)
 print("\n🔍 Starting Mining...")
 doMineBasaltRock()
 
