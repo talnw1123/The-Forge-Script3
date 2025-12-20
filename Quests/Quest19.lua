@@ -1781,37 +1781,14 @@ local function mineDemoniteRoutine()
         return true
     end
     
-    -- Equip Magma Pickaxe (required to mine Volcanic Rock)
-    local magmaName = QUEST_CONFIG.MAGMA_PICKAXE_CONFIG.TARGET_PICKAXE
-    local hasMagma, isMagmaEquipped = isPickaxeEquipped(magmaName)
+    -- NOTE: This routine relies on the main mining loop to do the actual work
+    -- It just needs to ensure the player is mining in the volcanic area
+    -- The MINING_PATHS in DEMONIC_PICKAXE_CONFIG includes Island2VolcanicDepths
+    -- which will be picked up by findNearestBasaltRock when Magma Pickaxe is equipped
     
-    if not hasMagma then
-        warn("   ❌ No Magma Pickaxe! Cannot mine Volcanic Rock.")
-        return false
-    end
-    
-    if not isMagmaEquipped then
-        print("   ⛏️ Equipping Magma Pickaxe for Volcanic Rock mining...")
-        equipPickaxeByName(magmaName)
-        task.wait(0.5)
-    else
-        print("   ✅ Magma Pickaxe already equipped!")
-    end
-    
-    -- Unpause to allow main mining loop to work
-    State.isPaused = false
-    
-    -- Wait while the main mining loop gathers Demonite
+    -- Simply wait while the main mining loop gathers Demonite
     print("   ⏳ Monitoring Demonite collection...")
     while Quest19Active and getDemoniteCount() < requiredCount do
-        -- Re-check Magma Pickaxe is still equipped
-        local _, stillEquipped = isPickaxeEquipped(magmaName)
-        if not stillEquipped then
-            print("   ⚠️ Magma Pickaxe unequipped, re-equipping...")
-            equipPickaxeByName(magmaName)
-            task.wait(0.5)
-        end
-        
         task.wait(2)
         currentCount = getDemoniteCount()
         if currentCount > 0 then
