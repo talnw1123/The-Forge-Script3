@@ -1332,7 +1332,7 @@ local function isItemEquippedFromUI(guid)
     if not textLabel or not textLabel:IsA("TextLabel") then return false end
 
     return textLabel.Text == "Unequip"
-endstartMagmaBuyTask()
+end
 
 -- Get all non-equipped weapons and armor
 local function getNonEquippedItems()
