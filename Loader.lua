@@ -320,11 +320,11 @@ local function loadQuest(questNum)
     
     local success, result = pcall(function()
         local code = game:HttpGet(questUrl)
-        local func = loadstring(code)
+        local func, syntaxErr = loadstring(code)
         if func then
             return func()
         else
-            error("Failed to compile quest code")
+            error("Failed to compile quest code: " .. tostring(syntaxErr))
         end
     end)
     
