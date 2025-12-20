@@ -1805,7 +1805,7 @@ local function mineDemoniteRoutine()
                 if pathFolder then
                     for _, container in ipairs(pathFolder:GetChildren()) do
                         -- Check direct children (old structure)
-                        if container.Name == config.ROCK_NAME and container:FindFirstChild("Ore") then
+                        if container.Name == config.ROCK_NAME then
                             local rockPos = container.PrimaryPart and container.PrimaryPart.Position or container.Position
                             local dist = (rockPos - hrp.Position).Magnitude
                             if dist < minDist then
@@ -1817,7 +1817,7 @@ local function mineDemoniteRoutine()
                         -- Check nested structure (Rocks.Path.[N].["Volcanic Rock"])
                         if container:IsA("Model") or container:IsA("Folder") then
                             local rock = container:FindFirstChild(config.ROCK_NAME)
-                            if rock and rock:FindFirstChild("Ore") then
+                            if rock then
                                 local rockPos = rock.PrimaryPart and rock.PrimaryPart.Position or rock.Position
                                 local dist = (rockPos - hrp.Position).Magnitude
                                 if dist < minDist then
@@ -1888,7 +1888,7 @@ local function mineDemoniteRoutine()
                     if pathFolder then
                         for _, container in ipairs(pathFolder:GetChildren()) do
                             -- Check direct children
-                            if container.Name == config.ROCK_NAME and container:FindFirstChild("Ore") then
+                            if container.Name == config.ROCK_NAME then
                                 print("   ✅ Volcanic Rock spawned! Moving to mine...")
                                 foundRock = true
                                 break
@@ -1896,7 +1896,7 @@ local function mineDemoniteRoutine()
                             -- Check nested structure
                             if container:IsA("Model") or container:IsA("Folder") then
                                 local rock = container:FindFirstChild(config.ROCK_NAME)
-                                if rock and rock:FindFirstChild("Ore") then
+                                if rock then
                                     print("   ✅ Volcanic Rock spawned! Moving to mine...")
                                     foundRock = true
                                     break
