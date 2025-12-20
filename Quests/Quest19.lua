@@ -1866,21 +1866,13 @@ local function mineDemoniteRoutine()
                 end
             end
         else
-            -- No rock found → stay in place and wait for rock to spawn
+            -- No rock found → wait for rock to spawn
             print("   ⏸️ No Volcanic Rock found, waiting for respawn...")
-            
-            -- Lock position at current location (hover in place)
-            local char = player.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                local hoverPos = hrp.Position
-                lockPositionLayingDown(hoverPos)
-            end
             
             -- Wait until a Volcanic Rock spawns
             local foundRock = false
             while Quest19Active and not foundRock and getDemoniteCount() < requiredCount do
-                task.wait(0.5)
+                task.wait(1)  -- Check every second
                 
                 -- Check for new rock (nested structure: Rocks.Path.[N].["Volcanic Rock"])
                 for _, pathName in ipairs(config.MINING_PATHS) do
@@ -1907,9 +1899,6 @@ local function mineDemoniteRoutine()
                     if foundRock then break end
                 end
             end
-            
-            -- Unlock position to move to new rock
-            unlockPosition()
         end
         
         -- Update count
