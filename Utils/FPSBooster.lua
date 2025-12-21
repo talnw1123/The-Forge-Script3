@@ -62,6 +62,9 @@ local player = Players.LocalPlayer
 local BlackScreenOverlay = nil
 local BlackScreenEnabled = true
 
+-- Global Quest Status (for Quest scripts to update)
+_G.CurrentQuestStatus = "Initializing..."
+
 ----------------------------------------------------------------
 -- 🎨 GRAPHICS QUALITY
 ----------------------------------------------------------------
@@ -373,7 +376,7 @@ local function enableBlackScreen()
     local goldLabel = Instance.new("TextLabel")
     goldLabel.Text = "💰 Gold: Loading..."
     goldLabel.Size = UDim2.new(1, 0, 0, 60)
-    goldLabel.Position = UDim2.new(0, 0, 0.6, 20)
+    goldLabel.Position = UDim2.new(0, 0, 0.55, 0)
     goldLabel.BackgroundTransparency = 1
     goldLabel.TextColor3 = Color3.fromRGB(255, 215, 0) -- Gold color
     goldLabel.Font = Enum.Font.FredokaOne
@@ -381,9 +384,22 @@ local function enableBlackScreen()
     goldLabel.ZIndex = 1001
     goldLabel.Parent = frame
     
-    -- อัปเดต Gold ทุก 2 วินาที
+    -- แสดง Quest Status (Current farming mode)
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Text = "📋 Status: " .. (_G.CurrentQuestStatus or "Initializing...")
+    statusLabel.Size = UDim2.new(1, 0, 0, 50)
+    statusLabel.Position = UDim2.new(0, 0, 0.65, 20)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.TextColor3 = Color3.fromRGB(144, 238, 144) -- Light green
+    statusLabel.Font = Enum.Font.RobotoMono
+    statusLabel.TextSize = 20
+    statusLabel.ZIndex = 1001
+    statusLabel.Parent = frame
+    
+    -- อัปเดต Gold และ Status ทุก 1 วินาที
     task.spawn(function()
         while screenGui and screenGui.Parent do
+            -- Update Gold
             local goldUI = player:FindFirstChild("PlayerGui")
                           and player.PlayerGui:FindFirstChild("Main")
                           and player.PlayerGui.Main:FindFirstChild("Screen")
@@ -396,7 +412,10 @@ local function enableBlackScreen()
                 goldLabel.Text = "💰 Gold: --"
             end
             
-            task.wait(2)
+            -- Update Quest Status
+            statusLabel.Text = "📋 Status: " .. (_G.CurrentQuestStatus or "Unknown")
+            
+            task.wait(1)
         end
     end)
     
