@@ -3722,9 +3722,12 @@ while Quest19Active do
         print("   💎 Cobalt Pickaxe EQUIPPED → Starting Cobalt Mode!")
         local rareDone = doCobaltModeRoutine()
         if rareDone then
-            print("   💎 Cobalt Mode completed!")
+            print("   💎 Cobalt Mode completed! (Rare weapon obtained)")
+            continue -- Re-check after getting rare weapon
+        else
+            print("   ⛏️ Cobalt Mode needs more ores → Going to mining...")
+            break -- Exit to mining loop to collect ores
         end
-        continue -- Re-check equipped pickaxe after mode ends
     end
     
     -- ⛏️ No special pickaxe equipped or modes disabled → Mining
