@@ -364,7 +364,7 @@ local function enableBlackScreen()
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Text = player.Name or "Unknown"
     nameLabel.Size = UDim2.new(1, 0, 0, 80)
-    nameLabel.Position = UDim2.new(0, 0, 0.4, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0.25, 0)
     nameLabel.BackgroundTransparency = 1
     nameLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
     nameLabel.Font = Enum.Font.FredokaOne
