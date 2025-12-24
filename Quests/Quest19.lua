@@ -3318,10 +3318,15 @@ local function getCurrentMiningConfig()
 
     -- Check if we're doing Skal Quest (need Volcanic Rock for Demonite)
     if hasSkalQuest and hasSkalQuest() and hasPickaxe(magmaPickaxe) then
-        print("   😈 Skal Quest active → Mining Volcanic Rock for Demonite")
+        -- 😈 PRIORITY BASED ROCK SELECTION FOR SKAL QUEST
+        -- Priority 1: Volcanic Rock (for Demonite)
+        -- Priority 2: Basalt Vein (fallback)
+        -- Priority 3: Basalt Core (fallback)
+        print("   😈 Skal Quest active → Priority Rock Selection Mode")
         return {
-            ROCK_NAME = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.ROCK_NAME,  -- "Volcanic Rock"
-            MINING_PATHS = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.MINING_PATHS,  -- includes Island2VolcanicDepths
+            ROCK_NAME = "PRIORITY_SKAL",  -- Special flag for priority selection
+            MINING_PATHS = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.MINING_PATHS,
+            PRIORITY_ROCKS = {"Volcanic Rock", "Basalt Vein", "Basalt Core"},
         }
     -- Tier 3: Magma Pickaxe → Basalt Core (User requested due to crowding at Vein)
     elseif hasPickaxe(magmaPickaxe) then
@@ -3358,7 +3363,66 @@ local function findNearestBasaltRock(excludeRock)
     local miningConfig = getCurrentMiningConfig()
     local rockName = miningConfig.ROCK_NAME
     local miningPaths = miningConfig.MINING_PATHS
-
+    
+    -- 😈 PRIORITY_SKAL MODE: Search for rocks in priority order
+    if rockName == "PRIORITY_SKAL" and miningConfig.PRIORITY_ROCKS then
+        local priorityRocks = miningConfig.PRIORITY_ROCKS
+        
+        for priority, targetRockName in ipairs(priorityRocks) do
+            local bestRock, bestDist = nil, math.huge
+            local skippedOccupied = 0
+            
+            for _, pathName in ipairs(miningPaths) do
+                local folder = MINING_FOLDER_PATH:FindFirstChild(pathName)
+                
+                if folder then
+                    for _, child in ipairs(folder:GetChildren()) do
+                        if child:IsA("SpawnLocation") or child.Name == "SpawnLocation" then
+                            local rock = child:FindFirstChild(targetRockName)
+                            
+                            if rock and rock ~= excludeRock and isTargetValid(rock) then
+                                if isRockOccupied(rock) then
+                                    skippedOccupied = skippedOccupied + 1
+                                else
+                                    local pos = getRockUndergroundPosition(rock)
+                                    if pos then
+                                        local dist = (pos - hrp.Position).Magnitude
+                                        if dist < bestDist then
+                                            bestDist = dist
+                                            bestRock = rock
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- If found a rock of this priority, return it
+            if bestRock then
+                if priority == 1 then
+                    print(string.format("   🌋 Found Volcanic Rock! (Priority %d)", priority))
+                elseif priority == 2 then
+                    print(string.format("   🪨 Volcanic Rock not found, using Basalt Vein (Priority %d)", priority))
+                else
+                    print(string.format("   ⛰️ Fallback to Basalt Core (Priority %d)", priority))
+                end
+                
+                if skippedOccupied > 0 then
+                    print(string.format("   ⏭️ Skipped %d occupied %s", skippedOccupied, targetRockName))
+                end
+                
+                return bestRock, bestDist, targetRockName
+            end
+        end
+        
+        -- No rocks found at any priority
+        print("   ❌ No rocks found at any priority level!")
+        return nil, nil, nil
+    end
+    
+    -- Normal single rock type search
     local targetRock, minDist = nil, math.huge
     local skippedOccupied = 0
 

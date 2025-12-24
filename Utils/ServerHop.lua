@@ -164,197 +164,178 @@ local function teleportToServer(server)
     print("⏳ Waiting 1s for server state update...")
     task.wait(1)
 
-    -- [[ QUEUE ON TELEPORT: AUTO-REJOIN ISLAND ]]
+    -- [[ QUEUE ON TELEPORT: SIMPLIFIED ANTI-TELEPORT ]]
     if queue_on_teleport then
         local queueScript = string.format([[
             local REJECT_ISLAND = "%s"
             
             print("🚀 [QUEUE] Script Loaded. Blocking: " .. REJECT_ISLAND)
-            repeat task.wait() until game:IsLoaded()
             
+            -- DON'T wait for game to load - run hooks IMMEDIATELY
+            
+            local TeleportService = game:GetService("TeleportService")
             local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            local KnitServices = ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
-            local PortalRF = KnitServices:WaitForChild("PortalService"):WaitForChild("RF"):WaitForChild("TeleportToIsland")
+            local StarterGui = game:GetService("StarterGui")
             
-            if not PortalRF then return end
-
-            -- ⚠️ CRITIAL: DO NOT WAIT FOR GAME LOAD. RUN IMMEDIATELY.
+            -- Get Island 1 PlaceID for blocking
+            local ISLAND1_PLACEID = 76558904092080 -- Stonewake's Cross PlaceID
+            local CURRENT_PLACEID = game.PlaceId
             
-            -- 🛡️ FINAL VERIFIED LOGIC: Global Block + Portal Blocker + REMOTE KILLER
-            local function activate_hooks()
-                local TeleportService = game:GetService("TeleportService")
-                local StarterGui = game:GetService("StarterGui")
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            -- [[ HAZE LOADER TELEPORT STOPPER (Exact copy) ]
+            -- Create UI showing "Stopping Teleport..."
+            local ui = Instance.new("ScreenGui")
+            ui.Name = "TeleportStopper"
+            ui.ResetOnSpawn = false
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, 300, 0, 100)
+            frame.Position = UDim2.new(0.5, -150, 0.5, -50)
+            frame.BackgroundColor3 = Color3.new(0, 0, 0)
+            frame.BackgroundTransparency = 0.5
+            frame.Parent = ui
+            local text = Instance.new("TextLabel")
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.TextColor3 = Color3.new(1, 1, 1)
+            text.Text = "Stopping Teleport..."
+            text.Parent = frame
+            ui.Parent = gethui and gethui() or game:GetService("Players").PlayerGui
+            task.spawn(function()
+                task.wait(5)
+                pcall(function() ui:Destroy() end)
+            end)
+            
+            -- [[ THE KEY TRICK: Break teleport by setting invalid TeleportGui ]
+            local stoppedTp = false
+            while not stoppedTp do
+                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or TeleportService
                 
-                -- [ TRAP: DESTROY PORTAL REMOTE ]
-                -- Path: ReplicatedStorage.Shared.Packages.Knit.Services.PortalService.RF.TeleportToIsland
-                task.spawn(function()
-                    local function destroyRemote()
-                        local services = ReplicatedStorage:FindFirstChild("Shared") 
-                            and ReplicatedStorage.Shared:FindFirstChild("Packages")
-                            and ReplicatedStorage.Shared.Packages:FindFirstChild("Knit")
-                            and ReplicatedStorage.Shared.Packages.Knit:FindFirstChild("Services")
-                        
-                        if services then
-                            local portal = services:FindFirstChild("PortalService")
-                            if portal then
-                                local rf = portal:FindFirstChild("RF")
-                                if rf then
-                                    local tpRemote = rf:FindFirstChild("TeleportToIsland")
-                                    if tpRemote then
-                                        tpRemote:Destroy()
-                                        warn("💣 TRAPPED: Destroyed TeleportToIsland Remote!")
-                                    end
-                                end
-                            end
-                        end
-                    end
-
-                    -- Try immediately
-                    pcall(destroyRemote)
-                    
-                    -- Try repeatedly for a few seconds (in case it loads late)
-                    for i = 1, 20 do
-                        pcall(destroyRemote)
-                        task.wait(0.5)
-                    end
-                end)
-
-                if not hookmetamethod then return end
-                
-                local oldhmmi
-                local oldhmmnc
-                
-                local START_TIME = tick()
-                local REPLICA_BLOCK_DURATION = 10 -- Block Replica for 10 seconds now
-
-                -- [[ NETWORK CHOKE: LAG SWITCH ]]
-                task.spawn(function()
-                    if setfflag then
-                        warn("📶 CHOKING NETWORK for 10s (FFlags)...")
-                        -- Disable Data Sending (prevents server from confirming our location update?)
-                        -- Actually, we want to prevent Server -> Client Teleport, so we might want to choke Incoming?
-                        -- But FFlags controlling Incoming are rare.
-                        -- Choking Outgoing might delay the "I am here" sync.
-                        
-                        -- Using user's suggested flags:
-                        pcall(function() setfflag("DFIntDataSenderRate", "-1") end)
-                        pcall(function() setfflag("DFIntS2PhysicsSenderRate", "-30") end) -- Invisible/No physics
-                        
-                        task.wait(10)
-                        
-                        warn("📶 RESTORING NETWORK...")
-                        -- Restore reasonable defaults (Roblox defaults are dynamic, but these should work)
-                        pcall(function() setfflag("DFIntDataSenderRate", "2000") end) 
-                        pcall(function() setfflag("DFIntS2PhysicsSenderRate", "20") end)
-                    else
-                        warn("⚠️ setfflag not supported on this executor!")
-                    end
-                end)
-
-                -- [ NEW: REPLICA DATA SPOOFING ]
-                -- Intercepts incoming data and constantly lies to the client
-                oldhmmi = hookmetamethod(game, "__index", newcclosure(function(self, index)
-                    -- [A] BLOCK TELEPORT INDEXING
-                    if self == TeleportService and type(index) == "string" then
-                        -- Prevent accessing ANY TeleportService method
-                        warn("⛔ BLOCKED TeleportService Index: " .. index)
-                        return function() end -- Return empty function to prevent crash but do nothing
-                    end
-
-                    -- [B] DATA SPOOFING (OnClientEvent)
-                    if not checkcaller() and typeof(self) == "Instance" and self:IsA("RemoteEvent") and index == "OnClientEvent" then
-                        local name = self.Name
-                        if string.find(name, "Replica") or string.find(name, "Portal") then
-                            local signal = oldhmmi(self, index)
-                            return {
-                                Connect = function(_, callback)
-                                    local hookedCallback = function(...)
-                                        local args = {...}
-                                        -- REWRITE DATA
-                                        local function recursiveSpoof(t)
-                                            if type(t) == "table" then
-                                                for k, v in pairs(t) do
-                                                    if type(v) == "table" then
-                                                        recursiveSpoof(v)
-                                                    elseif type(v) == "string" then
-                                                        -- The Magic: Swap Island 1 -> Island 2
-                                                        if string.find(v, "Stonewake") or string.find(v, "Island1") then
-                                                            t[k] = "Forgotten Kingdom"
-                                                            warn("🎭 SPOOFED Data: " .. v .. " -> Forgotten Kingdom")
-                                                        end
-                                                    end
-                                                end
-                                            end
-                                        end
-                                        
-                                        pcall(function() 
-                                            for i, v in ipairs(args) do recursiveSpoof(v) end 
-                                        end)
-                                        
-                                        return callback(unpack(args))
-                                    end
-                                    return signal:Connect(hookedCallback)
-                                end
-                            }
-                        end
-                    end
-                    
-                    return oldhmmi(self, index)
-                end))
-
-                -- HOOK 2: __namecall (Function/Remote calls)
-                oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                    local method = getnamecallmethod()
-                    local args = {...}
-
-                    -- Note: accessing self.Name might crash on some Anti-Cheats, strict check first
-                    local selfName = ""
-                    pcall(function() selfName = self.Name end) 
-
-                    -- [A] BLOCK TELEPORTSERVICE (Aggressive)
-                    if self == TeleportService then
-                         warn("⛔ BLOCKED TeleportService Namecall: " .. tostring(method))
-                         return nil
-                    end
-
-                    -- [B] BLOCK PORTAL REMOTES
-                    if type(method) == "string" and (method == "InvokeServer" or method == "FireServer") then
-                        -- Check args for Island 1
-                        for _, arg in pairs(args) do
-                            if type(arg) == "string" then
-                                local s = arg:lower()
-                                if string.find(s, "stonewake") or string.find(s, "island1") then
-                                    warn("🛡️ BLOCKED Portal Request: " .. tostring(arg))
-                                    return nil
-                                end
-                            end
-                        end
-                        
-                        -- Extra Specific Checks
-                        if selfName == "TeleportToIsland" then return nil end
-                        if selfName == "ClientLoaded" then return nil end
-                        if selfName == "GetPlayerEquipmentInfo" then return nil end
-                        if selfName == "CmdrFunction" then return nil end
-                        
-                        -- Note: We do NOT block ReplicaRequestData anymore. 
-                        -- We let it flow, but we SPOOF the response in __index!
-                    end
-                    
-                    return oldhmmnc(self, ...)
-                end))
-                    
-                    return oldhmmnc(self, ...)
-                end))
-                
-                -- Notification
+                -- Set TeleportGui to TeleportService itself (INVALID! Causes error)
                 pcall(function()
-                    StarterGui:SetCore('SendNotification', {Title = 'Security', Text = 'Anti-Teleport Active'})
+                    tpService:SetTeleportGui(tpService)
                 end)
-                warn("✅ Anti-Teleport Active (Global + Portal Block + Remote Trap)")
+                
+                -- Check LogService for "cannot be cloned" error (means teleport is broken)
+                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                pcall(function()
+                    for i, v in logService:GetLogHistory() do
+                        if v.message:find("cannot be cloned") then
+                            stoppedTp = true
+                            warn("✅ Teleport STOPPED! (Detected 'cannot be cloned' error)")
+                            break
+                        end
+                    end
+                end)
+                
+                task.wait()
+                pcall(function() tpService:TeleportCancel() end)
+                pcall(function() tpService:SetTeleportGui(nil) end)
+            end
+            pcall(function() ui:Destroy() end)
+            warn("🎉 Haze Loader Teleport Stopper completed!")
+            
+            -- NOTE: Character Lock removed as per user request
+            
+            -- [ TRAP: DESTROY PORTAL REMOTE ]
+            task.spawn(function()
+                local function destroyRemote()
+                    local services = ReplicatedStorage:FindFirstChild("Shared") 
+                        and ReplicatedStorage.Shared:FindFirstChild("Packages")
+                        and ReplicatedStorage.Shared.Packages:FindFirstChild("Knit")
+                        and ReplicatedStorage.Shared.Packages.Knit:FindFirstChild("Services")
+                    
+                    if services then
+                        local portal = services:FindFirstChild("PortalService")
+                        if portal then
+                            local rf = portal:FindFirstChild("RF")
+                            if rf then
+                                local tpRemote = rf:FindFirstChild("TeleportToIsland")
+                                if tpRemote then
+                                    tpRemote:Destroy()
+                                    warn("💣 TRAPPED: Destroyed TeleportToIsland Remote!")
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- Keep trying for 10 seconds
+                for i = 1, 20 do
+                    pcall(destroyRemote)
+                    task.wait(0.5)
+                end
+            end)
+            
+            -- NOTE: Network Choke removed as per user request
+
+            if not hookmetamethod then 
+                warn("⚠️ hookmetamethod not supported!")
+                return 
             end
             
-            activate_hooks() -- Run immediately
+            local oldhmmnc
+            
+            -- NOTE: Removed __index hook - it was breaking game data loading
+            -- Keeping only __namecall hook for blocking teleport calls
+            
+            -- Flag to control blocking (will be disabled after 10 seconds)
+            local blockingEnabled = true
+            
+            -- Disable blocking after 10 seconds
+            task.spawn(function()
+                task.wait(10)
+                blockingEnabled = false
+                warn("🔓 TeleportService blocking DISABLED after 10 seconds. Normal teleport now allowed!")
+            end)
+            
+            -- AGGRESSIVE HOOK: Block ALL TeleportService calls (while blockingEnabled)
+            oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                local args = {...}
+                
+                local selfName = ""
+                pcall(function() selfName = self.Name end)
+
+                -- [A] BLOCK ALL TELEPORTSERVICE METHODS (only while blocking is enabled)
+                if blockingEnabled and self == TeleportService then
+                    -- Block everything except TeleportCancel (we need that)
+                    if method ~= "TeleportCancel" then
+                        warn("⛔ BLOCKED TeleportService." .. tostring(method))
+                        return nil
+                    end
+                end
+
+                -- [B] BLOCK PORTAL REMOTES mentioning Stonewake
+                if type(method) == "string" and (method == "InvokeServer" or method == "FireServer") then
+                    for _, arg in pairs(args) do
+                        if type(arg) == "string" then
+                            local s = arg:lower()
+                            if string.find(s, "stonewake") or string.find(s, "island1") then
+                                warn("🛡️ BLOCKED Portal Request: " .. tostring(arg))
+                                return nil
+                            end
+                        end
+                    end
+                    
+                    -- Block TeleportToIsland remote specifically
+                    if selfName == "TeleportToIsland" then 
+                        -- Check if any arg mentions Stonewake
+                        for _, arg in pairs(args) do
+                            if type(arg) == "string" and string.find(arg:lower(), "stonewake") then
+                                warn("🛡️ BLOCKED TeleportToIsland to Stonewake")
+                                return nil
+                            end
+                        end
+                    end
+                end
+                
+                return oldhmmnc(self, ...)
+            end))
+            
+            -- Notification
+            pcall(function()
+                StarterGui:SetCore('SendNotification', {Title = 'Security', Text = 'Anti-Teleport Active + Cancel Loop'})
+            end)
+            warn("✅ Anti-Teleport Active (Aggressive Mode + TeleportCancel Loop)")
         ]], CONFIG.REJECT_ISLAND)
         
         queue_on_teleport(queueScript)

@@ -22,6 +22,11 @@ local QUEST_CONFIG = {
     QUEST_NAME = "Smart Teleport & Arcane Buy",
     REQUIRED_LEVEL = 10,
     ISLAND_NAME = "Forgotten Kingdom",
+    
+    -- 🌐 SERVER HOP CONFIG (Join low-player server on Island2)
+    ISLAND2_PLACE_ID = 129009554587176,  -- Forgotten Kingdom PlaceID
+    MAX_PLAYERS_PREFERRED = 3,            -- Prefer servers with <= 3 players
+    SERVER_HOP_ENABLED = true,           -- Enable server hop to low-player server
 }
 
 -- 💜 ARCANE PICKAXE CONFIG
@@ -370,7 +375,145 @@ local function teleportToIsland(islandName)
 end
 
 ----------------------------------------------------------------
--- 💜 ARCANE PICKAXE PURCHASE
+-- 🌐 SERVER HOP TO ISLAND2 (Low Player Server)
+----------------------------------------------------------------
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local function getBestServer(placeId, maxPlayers)
+    local url = string.format(
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+        placeId
+    )
+    
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+    
+    if not success then
+        warn("   ❌ Failed to fetch servers: " .. tostring(response))
+        return nil
+    end
+    
+    local data = HttpService:JSONDecode(response)
+    
+    if not data or not data.data then
+        warn("   ❌ Invalid server data")
+        return nil
+    end
+    
+    -- Find server with lowest player count
+    local bestServer = nil
+    local lowestPlayers = math.huge
+    
+    for _, server in ipairs(data.data) do
+        if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
+            -- Prefer servers with <= maxPlayers
+            if server.playing <= maxPlayers then
+                lowestPlayers = server.playing
+                bestServer = server
+            elseif not bestServer then
+                lowestPlayers = server.playing
+                bestServer = server
+            end
+        end
+    end
+    
+    return bestServer
+end
+
+local function serverHopToIsland2()
+    if not QUEST_CONFIG.SERVER_HOP_ENABLED then
+        print("   ⚠️ Server hop disabled, using normal teleport")
+        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+    end
+    
+    local placeId = QUEST_CONFIG.ISLAND2_PLACE_ID
+    local maxPlayers = QUEST_CONFIG.MAX_PLAYERS_PREFERRED
+    
+    print("\n" .. string.rep("=", 50))
+    print("🌐 SERVER HOP: Finding low-player server for Island2...")
+    print(string.rep("=", 50))
+    
+    local bestServer = getBestServer(placeId, maxPlayers)
+    
+    if not bestServer then
+        warn("   ❌ No suitable server found, using normal teleport")
+        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+    end
+    
+    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+    print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
+    
+    -- Queue Haze Loader anti-teleport script
+    if queue_on_teleport then
+        local queueScript = [[
+            -- [[ HAZE LOADER TELEPORT STOPPER ]]
+            local ui = Instance.new("ScreenGui")
+            ui.Name = "TeleportStopper"
+            ui.ResetOnSpawn = false
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, 300, 0, 100)
+            frame.Position = UDim2.new(0.5, -150, 0.5, -50)
+            frame.BackgroundColor3 = Color3.new(0, 0, 0)
+            frame.BackgroundTransparency = 0.5
+            frame.Parent = ui
+            local text = Instance.new("TextLabel")
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.TextColor3 = Color3.new(1, 1, 1)
+            text.Text = "Stopping Teleport..."
+            text.Parent = frame
+            ui.Parent = gethui and gethui() or game:GetService("Players").PlayerGui
+            task.spawn(function()
+                task.wait(5)
+                pcall(function() ui:Destroy() end)
+            end)
+            
+            local stoppedTp = false
+            while not stoppedTp do
+                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                pcall(function() tpService:SetTeleportGui(tpService) end)
+                
+                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                pcall(function()
+                    for i, v in logService:GetLogHistory() do
+                        if v.message:find("cannot be cloned") then
+                            stoppedTp = true
+                            warn("✅ Teleport STOPPED!")
+                            break
+                        end
+                    end
+                end)
+                
+                task.wait()
+                pcall(function() tpService:TeleportCancel() end)
+                pcall(function() tpService:SetTeleportGui(nil) end)
+            end
+            pcall(function() ui:Destroy() end)
+            warn("🎉 Anti-teleport completed!")
+        ]]
+        
+        queue_on_teleport(queueScript)
+        print("   📜 Queued anti-teleport script")
+    end
+    
+    -- Teleport to the low-player server
+    print(string.format("   🚀 Teleporting to Island2 (PlaceID: %d)...", placeId))
+    
+    local success, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(placeId, bestServer.id)
+    end)
+    
+    if success then
+        print("   ✅ Teleport initiated!")
+        return true
+    else
+        warn("   ❌ Teleport failed: " .. tostring(err))
+        -- Fallback to normal teleport
+        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+    end
+end
 ----------------------------------------------------------------
 local function buyArcanePickaxe()
     if not ARCANE_CONFIG.ENABLED then return false end
@@ -495,7 +638,7 @@ buyArcanePickaxe()
 print("\n🔍 Step 2: Checking Location...")
 if needsTeleport() then
     print("   ⚠️ Not on target island!")
-    local success = teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+    local success = serverHopToIsland2()
     
     if success then
         print("\n" .. string.rep("=", 50))
