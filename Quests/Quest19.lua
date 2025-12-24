@@ -3326,7 +3326,7 @@ local function getCurrentMiningConfig()
         return {
             ROCK_NAME = "PRIORITY_SKAL",  -- Special flag for priority selection
             MINING_PATHS = {"Island2VolcanicDepths"},  -- Only mine in VolcanicDepths
-            PRIORITY_ROCKS = {"Volcanic Rock", "Basalt Vein", "Basalt Core"},
+            PRIORITY_ROCKS = {"Volcanic Rock", "Basalt Core", "Basalt Vein"},
         }
     -- Tier 3: Magma Pickaxe → Basalt Core (User requested due to crowding at Vein)
     elseif hasPickaxe(magmaPickaxe) then
@@ -3538,15 +3538,24 @@ local function doMineBasaltRock()
         if not targetRock then
             -- If doing Skal Quest, stay hovering and wait for Volcanic Rock to respawn
             if hasSkalQuest and hasSkalQuest() then
-                print(string.format("   ⏸️ No %s found, hovering in place...", rockName or "Volcanic Rock"))
-                -- Keep position locked if already locked, otherwise lock current position
-                if not State.positionLockConn then
-                    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                    if hrp then
+                -- 😈 HOVER IN PLACE: Don't fall while waiting for rocks to respawn
+                local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    -- Lock position IMMEDIATELY to prevent falling
+                    if not State.positionLockConn then
+                        print("   🔒 Locking position while waiting for rocks...")
                         lockPositionLayingDown(hrp.Position)
                     end
+                    
+                    -- Reinforced hover: ensure we stay in place
+                    hrp.Velocity = Vector3.zero
+                    if hrp.AssemblyLinearVelocity then
+                        hrp.AssemblyLinearVelocity = Vector3.zero
+                    end
                 end
-                task.wait(1)
+                
+                print(string.format("   ⏸️ No rocks in VolcanicDepths, hovering... (waiting 2s)"))
+                task.wait(2)
                 continue
             else
                 warn(string.format("   ❌ No %s found!", rockName or "rocks"))

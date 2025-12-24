@@ -401,11 +401,199 @@ local function runQuestLoop()
     
     if currentIsland == "Island2" then
         -- ============================================
-        -- 🌋 ISLAND 2: RUN QUEST 19 ONLY (Mining Loop)
-        -- Quest 19 has its own internal mining loop
+        -- 🌋 ISLAND 2 DETECTED
         -- ============================================
+        
+        -- 🌐 AUTO SERVER HOP CONFIG
+        local AUTO_HOP_CONFIG = {
+            ENABLED = true,
+            MAX_PLAYERS = 4,                    -- Server hop if players > 4
+            ISLAND2_PLACE_ID = 129009554587176, -- Forgotten Kingdom PlaceID
+            MAX_PLAYERS_PREFERRED = 3,          -- Prefer servers with <= 3 players
+            CHECK_INTERVAL = 10,                -- Check every 10 seconds
+        }
+        
+        -- 🌐 CHECK PLAYER COUNT AND SERVER HOP IF NEEDED
+        if AUTO_HOP_CONFIG.ENABLED then
+            local playerCount = #Players:GetPlayers()
+            print(string.format("\\n👥 Current Player Count: %d (Max: %d)", playerCount, AUTO_HOP_CONFIG.MAX_PLAYERS))
+            
+            if playerCount > AUTO_HOP_CONFIG.MAX_PLAYERS then
+                print("\\n" .. string.rep("=", 60))
+                print("🌐 TOO MANY PLAYERS! Starting Server Hop...")
+                print(string.rep("=", 60))
+                
+                -- 📡 GET BEST SERVER FUNCTION
+                local HttpService = game:GetService("HttpService")
+                local TeleportService = game:GetService("TeleportService")
+                
+                local function getBestServer(placeId, maxPlayers)
+                    local url = string.format(
+                        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+                        placeId
+                    )
+                    
+                    local success, response = pcall(function()
+                        return game:HttpGet(url)
+                    end)
+                    
+                    if not success then
+                        warn("   ❌ Failed to fetch servers: " .. tostring(response))
+                        return nil
+                    end
+                    
+                    local data = HttpService:JSONDecode(response)
+                    
+                    if not data or not data.data then
+                        warn("   ❌ Invalid server data")
+                        return nil
+                    end
+                    
+                    -- Find server with lowest player count
+                    local bestServer = nil
+                    local lowestPlayers = math.huge
+                    
+                    for _, server in ipairs(data.data) do
+                        if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
+                            -- Prefer servers with <= maxPlayers
+                            if server.playing <= maxPlayers then
+                                lowestPlayers = server.playing
+                                bestServer = server
+                            elseif not bestServer then
+                                lowestPlayers = server.playing
+                                bestServer = server
+                            end
+                        end
+                    end
+                    
+                    return bestServer
+                end
+                
+                -- 🚀 FIND AND TELEPORT TO LOW PLAYER SERVER
+                local bestServer = getBestServer(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED)
+                
+                if bestServer then
+                    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+                    print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
+                    
+                    -- Queue Haze Loader anti-teleport script
+                    if queue_on_teleport then
+                        local queueScript = [[
+                            -- [[ HAZE LOADER TELEPORT STOPPER 
+                            local stoppedTp = false
+                            local attempts = 0
+                            while not stoppedTp and attempts < 100 do
+                                attempts = attempts + 1
+                                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                                pcall(function() tpService:SetTeleportGui(tpService) end)
+                                
+                                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                                pcall(function()
+                                    for i, v in logService:GetLogHistory() do
+                                        if v.message:find("cannot be cloned") then
+                                            stoppedTp = true
+                                            warn("✅ Teleport STOPPED!")
+                                            break
+                                        end
+                                    end
+                                end)
+                                
+                                task.wait()
+                                pcall(function() tpService:TeleportCancel() end)
+                                pcall(function() tpService:SetTeleportGui(nil) end)
+                            end
+                            warn("🎉 Anti-teleport completed!")
+                        ]]
+                        
+                        queue_on_teleport(queueScript)
+                        print("   📜 Queued anti-teleport script")
+                    end
+                    
+                    -- Teleport!
+                    print(string.format("   🚀 Teleporting to low-player server..."))
+                    
+                    local success, err = pcall(function()
+                        TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
+                    end)
+                    
+                    if success then
+                        print("   ✅ Teleport initiated!")
+                        -- Wait forever since we're teleporting
+                        while true do task.wait(1) end
+                    else
+                        warn("   ❌ Teleport failed: " .. tostring(err))
+                        print("   ⚠️ Continuing with current server...")
+                    end
+                else
+                    warn("   ❌ No suitable low-player server found")
+                    print("   ⚠️ Continuing with current server...")
+                end
+            else
+                print("   ✅ Player count OK! No server hop needed.")
+            end
+        end
+        
+        -- 🔄 BACKGROUND PLAYER COUNT MONITORING (every 10 seconds)
+        if AUTO_HOP_CONFIG.ENABLED then
+            task.spawn(function()
+                print("🔄 [AUTO-HOP] Background monitoring started (every " .. AUTO_HOP_CONFIG.CHECK_INTERVAL .. "s)")
+                
+                while true do
+                    task.wait(AUTO_HOP_CONFIG.CHECK_INTERVAL)
+                    
+                    local currentPlayers = #Players:GetPlayers()
+                    
+                    if currentPlayers > AUTO_HOP_CONFIG.MAX_PLAYERS then
+                        print(string.format("\n👥 [AUTO-HOP] Player count: %d > %d, initiating server hop...", 
+                            currentPlayers, AUTO_HOP_CONFIG.MAX_PLAYERS))
+                        
+                        -- Re-use the getBestServer function (need to define it outside the if block)
+                        local HttpService = game:GetService("HttpService")
+                        local TeleportService = game:GetService("TeleportService")
+                        
+                        local url = string.format(
+                            "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+                            AUTO_HOP_CONFIG.ISLAND2_PLACE_ID
+                        )
+                        
+                        local success, response = pcall(function()
+                            return game:HttpGet(url)
+                        end)
+                        
+                        if success then
+                            local data = HttpService:JSONDecode(response)
+                            if data and data.data then
+                                local bestServer = nil
+                                local lowestPlayers = math.huge
+                                
+                                for _, server in ipairs(data.data) do
+                                    if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
+                                        if server.playing <= AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED then
+                                            lowestPlayers = server.playing
+                                            bestServer = server
+                                        end
+                                    end
+                                end
+                                
+                                if bestServer then
+                                    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+                                    
+                                    pcall(function()
+                                        TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
+                                    end)
+                                    
+                                    while true do task.wait(1) end
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+        
+        -- 🌋 START QUEST 19
         print("\n" .. string.rep("=", 60))
-        print("🌋 ISLAND 2 DETECTED - QUEST 19 MODE")
+        print("🌋 ISLAND 2 - QUEST 19 MODE")
         print("   ⛏️ Starting Mining + Auto Sell & Buy...")
         print(string.rep("=", 60))
         
