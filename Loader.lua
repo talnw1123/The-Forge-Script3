@@ -511,18 +511,33 @@ local function runQuestLoop()
                     
                     -- Teleport!
                     print(string.format("   🚀 Teleporting to low-player server..."))
+                    print(string.format("   🆔 Trying server with %d players...", bestServer.playing))
                     
+                    -- Try TeleportToPlaceInstance first, fallback to Teleport
                     local success, err = pcall(function()
                         TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                     end)
                     
-                    if success then
+                    if not success then
+                        warn("   ⚠️ TeleportToPlaceInstance failed: " .. tostring(err))
+                        print("   🔄 Trying fallback Teleport (random server)...")
+                        
+                        -- Fallback: Just teleport to any Island2 server
+                        local success2, err2 = pcall(function()
+                            TeleportService:Teleport(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID)
+                        end)
+                        
+                        if success2 then
+                            print("   ✅ Fallback teleport initiated!")
+                            while true do task.wait(1) end
+                        else
+                            warn("   ❌ Fallback teleport failed: " .. tostring(err2))
+                            print("   ⚠️ Continuing with current server...")
+                        end
+                    else
                         print("   ✅ Teleport initiated!")
                         -- Wait forever since we're teleporting
                         while true do task.wait(1) end
-                    else
-                        warn("   ❌ Teleport failed: " .. tostring(err))
-                        print("   ⚠️ Continuing with current server...")
                     end
                 else
                     warn("   ❌ No suitable low-player server found")
@@ -578,9 +593,17 @@ local function runQuestLoop()
                                 if bestServer then
                                     print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
                                     
-                                    pcall(function()
+                                    local success = pcall(function()
                                         TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                                     end)
+                                    
+                                    if not success then
+                                        -- Fallback to random server
+                                        print("   🔄 Fallback to random Island2 server...")
+                                        pcall(function()
+                                            TeleportService:Teleport(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID)
+                                        end)
+                                    end
                                     
                                     while true do task.wait(1) end
                                 end
