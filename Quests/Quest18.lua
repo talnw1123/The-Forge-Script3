@@ -448,7 +448,7 @@ local function serverHopToIsland2()
     -- Queue Haze Loader anti-teleport script
     if queue_on_teleport then
         local queueScript = [[
-            -- [[ HAZE LOADER TELEPORT STOPPER ]]
+            -- HAZE LOADER TELEPORT STOPPER
             local ui = Instance.new("ScreenGui")
             ui.Name = "TeleportStopper"
             ui.ResetOnSpawn = false
