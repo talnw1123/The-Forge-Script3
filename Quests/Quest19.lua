@@ -3322,10 +3322,10 @@ local function getCurrentMiningConfig()
         -- Priority 1: Volcanic Rock (for Demonite)
         -- Priority 2: Basalt Vein (fallback)
         -- Priority 3: Basalt Core (fallback)
-        print("   😈 Skal Quest active → Priority Rock Selection Mode")
+        print("   😈 Skal Quest active → Priority Rock Selection Mode (VolcanicDepths only)")
         return {
             ROCK_NAME = "PRIORITY_SKAL",  -- Special flag for priority selection
-            MINING_PATHS = QUEST_CONFIG.DEMONIC_PICKAXE_CONFIG.MINING_PATHS,
+            MINING_PATHS = {"Island2VolcanicDepths"},  -- Only mine in VolcanicDepths
             PRIORITY_ROCKS = {"Volcanic Rock", "Basalt Vein", "Basalt Core"},
         }
     -- Tier 3: Magma Pickaxe → Basalt Core (User requested due to crowding at Vein)
