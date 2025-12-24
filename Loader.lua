@@ -22,7 +22,7 @@ local CONFIG = {
     GITHUB_BASE_URL = "https://raw.githubusercontent.com/talnw1123/The-Forge-Script3/refs/heads/main/",
     
     -- ⏱️ Timing
-    INITIAL_WAIT = 40,          -- รอเริ่มต้น (วินาที)
+    INITIAL_WAIT = 20,          -- รอเริ่มต้น (วินาที)
     QUEST_CHECK_INTERVAL = 2,    -- เช็ค Quest ใหม่ทุกกี่วินาที
     
     -- 🎮 Quest Range
@@ -451,7 +451,7 @@ local function runQuestLoop()
                     
                     -- Find server with lowest player count
                     local bestServer = nil
-                    local lowestPlayers = math.huge
+                    local lowestPlayers = math.hwuge
                     
                     for _, server in ipairs(data.data) do
                         if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
