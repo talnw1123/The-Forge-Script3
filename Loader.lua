@@ -405,10 +405,8 @@ local function runQuestLoop()
         -- ============================================
         
         -- 🌐 AUTO SERVER HOP CONFIG
-        -- ⚠️ DISABLED: Game blocks TeleportService (Error 773)
-        -- Use Quest18 from Island1 for server hopping instead
         local AUTO_HOP_CONFIG = {
-            ENABLED = false,  -- Disabled due to game teleport restriction
+            ENABLED = true,
             MAX_PLAYERS = 4,                    -- Server hop if players > 4
             ISLAND2_PLACE_ID = 129009554587176, -- Forgotten Kingdom PlaceID
             MAX_PLAYERS_PREFERRED = 3,          -- Prefer servers with <= 3 players
