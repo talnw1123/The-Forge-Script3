@@ -623,11 +623,11 @@ local function runQuestLoop()
         
         -- 🛡️ ANTI-TELEPORT: Prevent being sent back to Island1
         print("🛡️ Setting up Anti-Teleport protection...")
+        
+        -- [1] HAZE LOADER TELEPORT STOPPER (breaks teleport system)
         task.spawn(function()
             local stoppedTp = false
-            local attempts = 0
-            while not stoppedTp and attempts < 100 do
-                attempts = attempts + 1
+            while not stoppedTp do
                 local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
                 pcall(function() tpService:SetTeleportGui(tpService) end)
                 
@@ -641,12 +641,44 @@ local function runQuestLoop()
                     end
                 end)
                 
-                task.wait(0.1)
+                task.wait()
                 pcall(function() tpService:TeleportCancel() end)
                 pcall(function() tpService:SetTeleportGui(nil) end)
             end
-            print("✅ Anti-Teleport protection active!")
+            print("✅ Teleport stopper completed!")
         end)
+        
+        -- [2] BLOCK TELEPORTSERVICE (__namecall) - Only for 10 seconds
+        if hookmetamethod then
+            local TeleportService = game:GetService("TeleportService")
+            local blockingEnabled = true
+            
+            -- Disable blocking after 10 seconds
+            task.spawn(function()
+                task.wait(10)
+                blockingEnabled = false
+                print("🔓 TeleportService blocking DISABLED after 10 seconds!")
+            end)
+            
+            local oldhmmnc
+            oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+                local method = getnamecallmethod()
+                
+                -- Block TeleportService calls while blocking is enabled
+                if blockingEnabled and self == TeleportService then
+                    if method ~= "TeleportCancel" then
+                        warn("⛔ [BLOCKED] TeleportService:" .. tostring(method))
+                        return nil
+                    end
+                end
+                
+                return oldhmmnc(self, ...)
+            end))
+            
+            print("⛔ TeleportService blocking ACTIVE (10 seconds)")
+        else
+            warn("⚠️ hookmetamethod not supported!")
+        end
         
         -- 🌋 START QUEST 19
         print("\n" .. string.rep("=", 60))
