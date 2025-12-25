@@ -23,7 +23,7 @@ local CONFIG = {
     GITHUB_BASE_URL = "https://raw.githubusercontent.com/talnw1123/The-Forge-Script3/refs/heads/main/",
     
     -- ⏱️ Timing
-    INITIAL_WAIT = 20,          -- รอเริ่มต้น (วินาที)
+    INITIAL_WAIT = 40,        -- รอเริ่มต้น (วินาที)
     QUEST_CHECK_INTERVAL = 2,    -- เช็ค Quest ใหม่ทุกกี่วินาที
     
     -- 🎮 Quest Range
