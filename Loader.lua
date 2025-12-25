@@ -6,8 +6,9 @@
        ██║   ██║  ██║███████╗    ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗
        ╚═╝   ╚═╝  ╚═╝╚══════╝    ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝
     
-    🔥 MODULAR QUEST LOADER
+    🔥 MODULAR QUEST LOADER V2
     📦 Auto-loads quests from GitHub based on active quest detection
+    🛡️ Fixed: Reserved Server Filter in Auto Hop
     
     Usage: loadstring(game:HttpGet("YOUR_GITHUB_RAW_URL/Loader.lua"))()
 --]]
@@ -45,7 +46,7 @@ local CONFIG = {
 -- 📦 LOAD SHARED UTILITIES
 ----------------------------------------------------------------
 print("=" .. string.rep("=", 59))
-print("🔥 THE FORGE - MODULAR QUEST LOADER")
+print("🔥 THE FORGE - MODULAR QUEST LOADER V2")
 print("=" .. string.rep("=", 59))
 
 print("\n⏳ Initial wait: " .. CONFIG.INITIAL_WAIT .. " seconds...")
@@ -65,7 +66,6 @@ end
 
 print("✅ Shared utilities loaded!")
 
--- ตรวจสอบว่า Shared โหลดสำเร็จ
 if not _G.Shared then
     warn("❌ _G.Shared not found after loading Shared.lua")
     return
@@ -100,7 +100,6 @@ local function getCurrentIsland()
     return nil
 end
 
-
 ----------------------------------------------------------------
 -- 🚀 LOAD FPS BOOSTER
 ----------------------------------------------------------------
@@ -120,11 +119,9 @@ if CONFIG.LOAD_FPS_BOOSTER then
     if fpsSuccess then
         print("✅ FPS Booster loaded!")
         
-        -- 🔄 WAIT FOR DESYNC RESPAWN TO COMPLETE
         if _G.DesyncEnabled then
             print("\n🔄 Waiting for Desync to activate...")
             
-            -- Wait for Desync to be ready (max 20 seconds)
             local desyncWaitStart = tick()
             while not _G.DesyncReady and (tick() - desyncWaitStart) < 20 do
                 task.wait(0.5)
@@ -183,7 +180,6 @@ if CONFIG.ANTI_AFK_ENABLED then
     end)
 end
 
-
 ----------------------------------------------------------------
 -- 📊 LEVEL CHECK SYSTEM
 ----------------------------------------------------------------
@@ -205,7 +201,6 @@ local function getPlayerLevel()
     return level
 end
 
-
 ----------------------------------------------------------------
 -- 📋 QUEST LIST EMPTY CHECK
 ----------------------------------------------------------------
@@ -220,14 +215,13 @@ local function isQuestListEmpty()
     
     if not list then return false end
     
-    -- Check if list only has UIListLayout and UIPadding (no actual quests)
     for _, child in ipairs(list:GetChildren()) do
         if child.Name ~= "UIListLayout" and child.Name ~= "UIPadding" then
-            return false  -- Found a quest item!
+            return false
         end
     end
     
-    return true  -- Only UIListLayout and UIPadding = empty!
+    return true
 end
 
 local function getActiveQuestNumber()
@@ -241,7 +235,6 @@ local function getActiveQuestNumber()
     
     if not list then return nil end
     
-    -- หา Quest ที่ active อยู่
     for _, child in ipairs(list:GetChildren()) do
         local id = string.match(child.Name, "^Introduction(%d+)Title$")
         if id and child:FindFirstChild("Frame") and child.Frame:FindFirstChild("TextLabel") then
@@ -249,7 +242,6 @@ local function getActiveQuestNumber()
             local questNum = tonumber(id) + 1
             
             if questNum and questName ~= "" then
-                -- เช็คว่า quest ยังไม่เสร็จ
                 local objList = list:FindFirstChild("Introduction" .. id .. "List")
                 if objList then
                     for _, item in ipairs(objList:GetChildren()) do
@@ -258,7 +250,6 @@ local function getActiveQuestNumber()
                                 and item.Main:FindFirstChild("Frame") 
                                 and item.Main.Frame:FindFirstChild("Check")
                             if check and not check.Visible then
-                                -- พบ objective ที่ยังไม่เสร็จ
                                 return questNum, questName
                             end
                         end
@@ -282,7 +273,6 @@ local function isQuestComplete(questNum)
     
     if not list then return true end
     
-    -- Convert 1-based QuestNum back to 0-based UI ID
     local uiID = questNum - 1
     local objList = list:FindFirstChild("Introduction" .. uiID .. "List")
     if not objList then return true end
@@ -310,7 +300,6 @@ local function loadQuest(questNum)
     local questFile = string.format("Quest%02d.lua", questNum)
     local questUrl = CONFIG.GITHUB_BASE_URL .. "Quests/" .. questFile .. "?t=" .. tostring(tick())
     
-    -- Skip verbose logging for Quest 15 (runs in background frequently)
     local showLogs = (questNum ~= 15)
     
     if showLogs then
@@ -340,12 +329,9 @@ local function loadQuest(questNum)
     end
 end
 
-
-
 ----------------------------------------------------------------
--- � QUEST 15 BACKGROUND (Auto Claim Index)
+-- 🔄 QUEST 15 BACKGROUND (Auto Claim Index)
 ----------------------------------------------------------------
--- Start immediately, run every 2 seconds
 local quest15Running = false
 
 local function startQuest15Background()
@@ -353,20 +339,108 @@ local function startQuest15Background()
     quest15Running = true
     
     task.spawn(function()
-        -- Silent startup (no spam in console)
         while quest15Running do
             pcall(function()
                 loadQuest(15)
             end)
             
-            task.wait(2)  -- Run every 10 seconds
+            task.wait(2)
         end
     end)
 end
 
--- Start Quest 15 Background immediately
 startQuest15Background()
 
+----------------------------------------------------------------
+-- 🌐 IMPROVED SERVER FINDER (Reserved Server Filter)
+----------------------------------------------------------------
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+
+local function getBestServer(placeId, maxPlayers)
+    local url = string.format(
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+        placeId
+    )
+    
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+    
+    if not success then
+        warn("   ❌ Failed to fetch servers: " .. tostring(response))
+        return nil
+    end
+    
+    local data = HttpService:JSONDecode(response)
+    
+    if not data or not data.data then
+        warn("   ❌ Invalid server data")
+        return nil
+    end
+    
+    local validServers = {}
+    
+    print(string.format("   🔍 Scanning %d servers...", #data.data))
+    
+    for _, server in ipairs(data.data) do
+        if server.id and 
+           server.playing and 
+           server.maxPlayers and
+           server.playing < server.maxPlayers then
+            
+            -- ✅ กรอง Reserved/VIP Server
+            local isReserved = false
+            
+            -- 1. เช็คว่ามี privateServerId หรือ reservedServerId
+            if server.privateServerId or server.reservedServerId then
+                isReserved = true
+            end
+            
+            -- 2. Server ID ต้องเป็น UUID format
+            if not isReserved then
+                local serverId = tostring(server.id)
+                if not string.match(serverId, "^%x+%-%x+%-%x+%-%x+%-%x+$") then
+                    isReserved = true
+                end
+            end
+            
+            -- 3. เช็คว่ามี ping field
+            if not isReserved and not server.ping then
+                isReserved = true
+            end
+            
+            -- ✅ เก็บเฉพาะ Public Server
+            if not isReserved then
+                table.insert(validServers, server)
+            end
+        end
+    end
+    
+    if #validServers == 0 then
+        warn("   ❌ No valid public servers found")
+        return nil
+    end
+    
+    print(string.format("   ✅ Found %d valid public servers", #validServers))
+    
+    -- เรียงตามจำนวนผู้เล่น
+    table.sort(validServers, function(a, b)
+        return a.playing < b.playing
+    end)
+    
+    -- เลือก Server ที่มีคนน้อยที่สุด
+    for _, server in ipairs(validServers) do
+        if server.playing <= maxPlayers then
+            print(string.format("   🎯 Selected: %d/%d players", server.playing, server.maxPlayers))
+            return server
+        end
+    end
+    
+    print(string.format("   ⚠️ No server with <= %d players, using lowest: %d/%d", 
+        maxPlayers, validServers[1].playing, validServers[1].maxPlayers))
+    return validServers[1]
+end
 
 ----------------------------------------------------------------
 -- 🎮 MAIN QUEST RUNNER
@@ -376,12 +450,9 @@ local function runQuestLoop()
     print("🎮 STARTING AUTO QUEST RUNNER")
     print(string.rep("=", 60))
     
-    -- ✅ RECOVERY CHECK: Quest List is empty?
     if isQuestListEmpty() then
         print("\n" .. string.rep("!", 50))
         print("⚠️ QUEST LIST IS EMPTY!")
-        print("   → No quests in PlayerGui.Main.Screen.Quests.List")
-        print("   → Player may have disconnected during Quest 1 dialogue")
         print("   → Force loading Quest 1 for recovery...")
         print(string.rep("!", 50))
         
@@ -393,7 +464,7 @@ local function runQuestLoop()
     
     local maxAttempts = 3
     local reachedQuest18 = false
-    local quest13Run = false  -- Track Quest 13 execution
+    local quest13Run = false
     
     -- 🌍 ISLAND-BASED QUEST ROUTING
     local currentIsland = getCurrentIsland()
@@ -404,161 +475,115 @@ local function runQuestLoop()
         -- 🌋 ISLAND 2 DETECTED
         -- ============================================
         
-        -- 🌐 AUTO SERVER HOP CONFIG
-        -- 🎲 Random delay added to avoid Roblox rate limit with multiple instances
+        -- 🌐 AUTO SERVER HOP CONFIG (FIXED)
         local AUTO_HOP_CONFIG = {
-            ENABLED = true,  -- Enabled: hop to low-player Island2 server
-            MAX_PLAYERS = 4,                    -- Server hop if players > 4
-            ISLAND2_PLACE_ID = 129009554587176, -- Forgotten Kingdom PlaceID
-            MAX_PLAYERS_PREFERRED = 3,          -- Prefer servers with <= 3 players
-            CHECK_INTERVAL = 10,                -- Check every 10 seconds
-            RANDOM_DELAY_MAX = 15,              -- Max random delay (0-15 seconds)
+            ENABLED = true,
+            MAX_PLAYERS = 4,
+            ISLAND2_PLACE_ID = 129009554587176,
+            MAX_PLAYERS_PREFERRED = 3,
+            CHECK_INTERVAL = 10,
+            RANDOM_DELAY_MAX = 15,
+            MAX_RETRIES = 3,
         }
         
-        -- 🌐 CHECK PLAYER COUNT AND SERVER HOP IF NEEDED
+        -- 🌐 CHECK AND HOP IF NEEDED
         if AUTO_HOP_CONFIG.ENABLED then
             local playerCount = #Players:GetPlayers()
-            print(string.format("\\n👥 Current Player Count: %d (Max: %d)", playerCount, AUTO_HOP_CONFIG.MAX_PLAYERS))
+            print(string.format("\n👥 Current Player Count: %d (Max: %d)", playerCount, AUTO_HOP_CONFIG.MAX_PLAYERS))
             
             if playerCount > AUTO_HOP_CONFIG.MAX_PLAYERS then
-                print("\\n" .. string.rep("=", 60))
+                print("\n" .. string.rep("=", 60))
                 print("🌐 TOO MANY PLAYERS! Starting Server Hop...")
                 print(string.rep("=", 60))
                 
-                -- 📡 GET BEST SERVER FUNCTION
-                local HttpService = game:GetService("HttpService")
-                local TeleportService = game:GetService("TeleportService")
+                local attempt = 1
+                local hopSuccess = false
                 
-                local function getBestServer(placeId, maxPlayers)
-                    local url = string.format(
-                        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
-                        placeId
-                    )
+                while attempt <= AUTO_HOP_CONFIG.MAX_RETRIES and not hopSuccess do
+                    print(string.format("\n🔍 Hop Attempt %d/%d", attempt, AUTO_HOP_CONFIG.MAX_RETRIES))
                     
-                    local success, response = pcall(function()
-                        return game:HttpGet(url)
-                    end)
+                    local bestServer = getBestServer(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED)
                     
-                    if not success then
-                        warn("   ❌ Failed to fetch servers: " .. tostring(response))
-                        return nil
-                    end
-                    
-                    local data = HttpService:JSONDecode(response)
-                    
-                    if not data or not data.data then
-                        warn("   ❌ Invalid server data")
-                        return nil
-                    end
-                    
-                    -- Find server with lowest player count
-                    local bestServer = nil
-                    local lowestPlayers = math.hwuge
-                    
-                    for _, server in ipairs(data.data) do
-                        if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
-                            -- Prefer servers with <= maxPlayers
-                            if server.playing <= maxPlayers then
-                                lowestPlayers = server.playing
-                                bestServer = server
-                            elseif not bestServer then
-                                lowestPlayers = server.playing
-                                bestServer = server
-                            end
-                        end
-                    end
-                    
-                    return bestServer
-                end
-                
-                -- 🚀 FIND AND TELEPORT TO LOW PLAYER SERVER
-                local bestServer = getBestServer(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED)
-                
-                if bestServer then
-                    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
-                    print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
-                    
-                    -- Queue Haze Loader anti-teleport script
-                    if queue_on_teleport then
-                        local queueScript = [[
-                            -- [[ HAZE LOADER TELEPORT STOPPER 
-                            local stoppedTp = false
-                            local attempts = 0
-                            while not stoppedTp and attempts < 100 do
-                                attempts = attempts + 1
-                                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
-                                pcall(function() tpService:SetTeleportGui(tpService) end)
-                                
-                                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
-                                pcall(function()
-                                    for i, v in logService:GetLogHistory() do
-                                        if v.message:find("cannot be cloned") then
-                                            stoppedTp = true
-                                            warn("✅ Teleport STOPPED!")
-                                            break
+                    if bestServer then
+                        print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+                        print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
+                        
+                        -- Queue anti-teleport script
+                        if queue_on_teleport then
+                            local queueScript = [[
+                                local stoppedTp = false
+                                local attempts = 0
+                                while not stoppedTp and attempts < 100 do
+                                    attempts = attempts + 1
+                                    local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                                    pcall(function() tpService:SetTeleportGui(tpService) end)
+                                    
+                                    local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                                    pcall(function()
+                                        for i, v in logService:GetLogHistory() do
+                                            if v.message:find("cannot be cloned") then
+                                                stoppedTp = true
+                                                break
+                                            end
                                         end
-                                    end
-                                end)
-                                
-                                task.wait()
-                                pcall(function() tpService:TeleportCancel() end)
-                                pcall(function() tpService:SetTeleportGui(nil) end)
-                            end
-                            warn("🎉 Anti-teleport completed!")
-                        ]]
+                                    end)
+                                    
+                                    task.wait()
+                                    pcall(function() tpService:TeleportCancel() end)
+                                    pcall(function() tpService:SetTeleportGui(nil) end)
+                                end
+                            ]]
+                            
+                            queue_on_teleport(queueScript)
+                            print("   📜 Queued anti-teleport script")
+                        end
                         
-                        queue_on_teleport(queueScript)
-                        print("   📜 Queued anti-teleport script")
-                    end
-                    
-                    -- Teleport!
-                    -- 🎲 Random delay to avoid Roblox rate limit with multiple instances
-                    local randomDelay = math.random(0, AUTO_HOP_CONFIG.RANDOM_DELAY_MAX)
-                    print(string.format("   ⏳ Waiting %d seconds before teleport (anti-rate-limit)...", randomDelay))
-                    task.wait(randomDelay)
-                    
-                    print(string.format("   🚀 Teleporting to low-player server..."))
-                    print(string.format("   🆔 Trying server with %d players...", bestServer.playing))
-                    
-                    -- Try TeleportToPlaceInstance first, fallback to Teleport
-                    local success, err = pcall(function()
-                        TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
-                    end)
-                    
-                    if not success then
-                        warn("   ⚠️ TeleportToPlaceInstance failed: " .. tostring(err))
-                        print("   🔄 Trying fallback Teleport (random server)...")
+                        local randomDelay = math.random(0, AUTO_HOP_CONFIG.RANDOM_DELAY_MAX)
+                        print(string.format("   ⏳ Waiting %d seconds (anti-rate-limit)...", randomDelay))
+                        task.wait(randomDelay)
                         
-                        -- Fallback: Just teleport to any Island2 server
-                        local success2, err2 = pcall(function()
-                            TeleportService:Teleport(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID)
+                        print("   🚀 Teleporting...")
+                        
+                        local success, err = pcall(function()
+                            TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                         end)
                         
-                        if success2 then
-                            print("   ✅ Fallback teleport initiated!")
+                        if success then
+                            print("   ✅ Teleport initiated!")
                             while true do task.wait(1) end
                         else
-                            warn("   ❌ Fallback teleport failed: " .. tostring(err2))
-                            print("   ⚠️ Continuing with current server...")
+                            local errorMsg = tostring(err)
+                            warn("   ❌ Teleport failed: " .. errorMsg)
+                            
+                            if string.find(errorMsg:lower(), "unauthorized") or 
+                               string.find(errorMsg:lower(), "game 312") or
+                               string.find(errorMsg:lower(), "unable to join") then
+                                warn("   ⚠️ Reserved server detected, retrying...")
+                                attempt = attempt + 1
+                                task.wait(3)
+                            else
+                                break
+                            end
                         end
                     else
-                        print("   ✅ Teleport initiated!")
-                        -- Wait forever since we're teleporting
-                        while true do task.wait(1) end
+                        warn("   ❌ No server found, retrying...")
+                        attempt = attempt + 1
+                        task.wait(3)
                     end
-                else
-                    warn("   ❌ No suitable low-player server found")
-                    print("   ⚠️ Continuing with current server...")
+                end
+                
+                if not hopSuccess then
+                    print("   ⚠️ Server hop failed, continuing with current server...")
                 end
             else
                 print("   ✅ Player count OK! No server hop needed.")
             end
         end
         
-        -- 🔄 BACKGROUND PLAYER COUNT MONITORING (every 10 seconds)
+        -- 🔄 BACKGROUND MONITORING
         if AUTO_HOP_CONFIG.ENABLED then
             task.spawn(function()
-                print("🔄 [AUTO-HOP] Background monitoring started (every " .. AUTO_HOP_CONFIG.CHECK_INTERVAL .. "s)")
+                print("🔄 [AUTO-HOP] Background monitoring started")
                 
                 while true do
                     task.wait(AUTO_HOP_CONFIG.CHECK_INTERVAL)
@@ -566,65 +591,27 @@ local function runQuestLoop()
                     local currentPlayers = #Players:GetPlayers()
                     
                     if currentPlayers > AUTO_HOP_CONFIG.MAX_PLAYERS then
-                        print(string.format("\n👥 [AUTO-HOP] Player count: %d > %d, initiating server hop...", 
-                            currentPlayers, AUTO_HOP_CONFIG.MAX_PLAYERS))
+                        print(string.format("\n👥 [AUTO-HOP] %d > %d, hopping...", currentPlayers, AUTO_HOP_CONFIG.MAX_PLAYERS))
                         
-                        -- Re-use the getBestServer function (need to define it outside the if block)
-                        local HttpService = game:GetService("HttpService")
-                        local TeleportService = game:GetService("TeleportService")
+                        local bestServer = getBestServer(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED)
                         
-                        local url = string.format(
-                            "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
-                            AUTO_HOP_CONFIG.ISLAND2_PLACE_ID
-                        )
-                        
-                        local success, response = pcall(function()
-                            return game:HttpGet(url)
-                        end)
-                        
-                        if success then
-                            local data = HttpService:JSONDecode(response)
-                            if data and data.data then
-                                local bestServer = nil
-                                local lowestPlayers = math.huge
-                                
-                                for _, server in ipairs(data.data) do
-                                    if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
-                                        if server.playing <= AUTO_HOP_CONFIG.MAX_PLAYERS_PREFERRED then
-                                            lowestPlayers = server.playing
-                                            bestServer = server
-                                        end
-                                    end
-                                end
-                                
-                                if bestServer then
-                                    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
-                                    
-                                    local success = pcall(function()
-                                        TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
-                                    end)
-                                    
-                                    if not success then
-                                        -- Fallback to random server
-                                        print("   🔄 Fallback to random Island2 server...")
-                                        pcall(function()
-                                            TeleportService:Teleport(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID)
-                                        end)
-                                    end
-                                    
-                                    while true do task.wait(1) end
-                                end
-                            end
+                        if bestServer then
+                            print(string.format("   ✅ Found: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+                            
+                            pcall(function()
+                                TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
+                            end)
+                            
+                            while true do task.wait(1) end
                         end
                     end
                 end
             end)
         end
         
-        -- 🛡️ ANTI-TELEPORT: Prevent being sent back to Island1
+        -- 🛡️ ANTI-TELEPORT PROTECTION
         print("🛡️ Setting up Anti-Teleport protection...")
         
-        -- [1] HAZE LOADER TELEPORT STOPPER (breaks teleport system)
         task.spawn(function()
             local stoppedTp = false
             while not stoppedTp do
@@ -645,148 +632,115 @@ local function runQuestLoop()
                 pcall(function() tpService:TeleportCancel() end)
                 pcall(function() tpService:SetTeleportGui(nil) end)
             end
-            print("✅ Teleport stopper completed!")
         end)
         
-        -- [2] BLOCK TELEPORTSERVICE (__namecall) - Only for 10 seconds
         if hookmetamethod then
             local TeleportService = game:GetService("TeleportService")
             local blockingEnabled = true
             
-            -- Disable blocking after 10 seconds
             task.spawn(function()
                 task.wait(10)
                 blockingEnabled = false
-                print("🔓 TeleportService blocking DISABLED after 10 seconds!")
             end)
             
             local oldhmmnc
             oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 local method = getnamecallmethod()
                 
-                -- Block TeleportService calls while blocking is enabled
                 if blockingEnabled and self == TeleportService then
                     if method ~= "TeleportCancel" then
-                        warn("⛔ [BLOCKED] TeleportService:" .. tostring(method))
                         return nil
                     end
                 end
                 
                 return oldhmmnc(self, ...)
             end))
-            
-            print("⛔ TeleportService blocking ACTIVE (10 seconds)")
-        else
-            warn("⚠️ hookmetamethod not supported!")
         end
         
         -- 🌋 START QUEST 19
         print("\n" .. string.rep("=", 60))
         print("🌋 ISLAND 2 - QUEST 19 MODE")
-        print("   ⛏️ Starting Mining + Auto Sell & Buy...")
         print(string.rep("=", 60))
         
-        -- Run Quest 19 ONCE - it has its own internal infinite loop
         loadQuest(19)
         
-        -- Quest 19 will run its mining loop internally
-        -- This return is reached only if Quest 19 ends (which it shouldn't)
         return
     end
     
     -- ============================================
-    -- 🏝️ ISLAND 1: RUN QUESTS 1-18 (Normal Flow)
+    -- 🏝️ ISLAND 1: RUN QUESTS 1-18
     -- ============================================
     print("\n🏝️ ISLAND 1 MODE - Running Quests 1-18...")
     
     local currentQuest = CONFIG.MIN_QUEST
     
-    -- เช็คว่าเริ่มที่ Quest 18 หรือยัง
     local activeNum, _ = getActiveQuestNumber()
     if activeNum and activeNum >= 18 then
         reachedQuest18 = true
         print("\n🌋 Quest 18 detected! Skipping Quest 1-17 checks...")
     end
     
-    while currentQuest <= 18 do  -- Island 1: max = 18
-        -- ถ้าถึง Quest 18 แล้ว ให้ skip ไป Quest 18 เลย
+    while currentQuest <= 18 do
         if reachedQuest18 and currentQuest < 18 then
             currentQuest = 18
             continue
         end
         
-        -- ============================================
-        -- 🛠️ CUSTOM QUEST LOGIC (13, 14, 15, 16, 17, 18)
-        -- ไม่เช็ค UI, รันตาม internal logic
-        -- ============================================
+        -- Custom quest logic (13-18)
         if currentQuest == 13 then
-            -- Quest 13: Run once per session
             if not quest13Run then
-                print("\n🎵 Loading Quest 13 (Bard Quest) [Run Once Per Session]...")
+                print("\n🎵 Loading Quest 13...")
                 loadQuest(13)
                 quest13Run = true
-            else
-                print("   ⏭️ Quest 13 already ran this session, skipping.")
             end
             currentQuest = currentQuest + 1
             task.wait(2)
             continue
             
         elseif currentQuest == 14 then
-            -- Quest 14: Lost Guitar (internal check, uses BardQuest not Introduction{N})
-            print("\n🎸 Loading Quest 14 (Lost Guitar)...")
+            print("\n🎸 Loading Quest 14...")
             loadQuest(14)
             currentQuest = currentQuest + 1
             task.wait(2)
             continue
             
         elseif currentQuest == 15 then
-            -- Quest 15: Skip UI check, already running in background
-            -- (Silent skip - no console spam)
             currentQuest = currentQuest + 1
             task.wait(1)
             continue
             
         elseif currentQuest == 16 then
-            -- Quest 16: Auto Buy Pickaxe (Gold >= 3340 AND Level < 10, no UI check)
-            print("\n🛒 Loading Quest 16 (Auto Buy Pickaxe)...")
+            print("\n🛒 Loading Quest 16...")
             loadQuest(16)
             currentQuest = currentQuest + 1
             task.wait(2)
             continue
             
         elseif currentQuest == 17 then
-            -- Quest 17: Auto mining until level 10 (internal check)
-            print("\n⛏️ Loading Quest 17 (Auto Mining Until Level 10)...")
+            print("\n⛏️ Loading Quest 17...")
             loadQuest(17)
             currentQuest = currentQuest + 1
             task.wait(2)
             continue
             
         elseif currentQuest == 18 then
-            -- Quest 18: Smart mining (internal check)
-            print("\n🌋 Loading Quest 18 (Smart Mining)...")
+            print("\n🌋 Loading Quest 18...")
             loadQuest(18)
-            break  -- Quest 18 is infinite loop
+            break
         end
         
-        -- ============================================
-        -- 📋 STANDARD UI-BASED QUEST LOGIC (1-12)
-        -- ============================================
+        -- Standard UI-based logic (1-12)
         print(string.format("\n🔍 Checking Quest %d...", currentQuest))
         
-        -- เช็คว่า Quest นี้ active หรือยัง
         activeNum, activeName = getActiveQuestNumber()
         
         if activeNum then
             print(string.format("   📋 Active Quest: #%d - %s", activeNum, activeName or "Unknown"))
             
-            -- ถ้าถึง Quest 18 ให้ mark ว่าไม่ต้องเช็ค Quest เก่าอีก
             if activeNum >= 18 then
                 reachedQuest18 = true
             end
             
-            -- โหลดและรัน Quest
             local attempts = 0
             while attempts < maxAttempts do
                 attempts = attempts + 1
@@ -795,10 +749,9 @@ local function runQuestLoop()
                 local success = loadQuest(activeNum)
                 
                 if success then
-                    -- รอให้ Quest เสร็จ
                     print("   ⏳ Waiting for quest to complete...")
                     
-                    local timeout = 600  -- 10 นาที timeout
+                    local timeout = 600
                     local startTime = tick()
                     
                     while not isQuestComplete(activeNum) and (tick() - startTime) < timeout do
@@ -819,28 +772,14 @@ local function runQuestLoop()
             
             currentQuest = activeNum + 1
         else
-            -- ⚠️ NO ACTIVE QUEST FOUND
             print("   ⚠️ No active quest found!")
             
-            local playerLevel = getPlayerLevel()
-            print(string.format("   📊 Player Level: %s", tostring(playerLevel)))
-            
-            -- 🩹 RECOVERY: If we're checking Quest 1 and no UI found
-            -- This means player likely disconnected during Quest 1 dialogue
             if currentQuest == 1 then
-                print("\n" .. string.rep("!", 50))
-                print("⚠️ RECOVERY MODE: No Quest 1 UI found!")
-                print("   → May have disconnected during Quest 1 dialogue")
-                print("   → Force loading Quest 1...")
-                print(string.rep("!", 50))
-                
-                loadQuest(1)  -- Quest 1 has its own logic to handle this
+                print("\n⚠️ RECOVERY: Loading Quest 1...")
+                loadQuest(1)
                 task.wait(5)
-                
-                -- Move to Quest 2 regardless (Quest 1 script handles completion)
                 currentQuest = 2
             else
-                -- Normal case: skip to next quest
                 currentQuest = currentQuest + 1
             end
         end
@@ -848,13 +787,10 @@ local function runQuestLoop()
         task.wait(2)
     end
     
-    -- ============================================
-    -- 🌋 QUEST 18 INFINITE LOOP MODE
-    -- ============================================
+    -- Quest 18 infinite loop
     if reachedQuest18 then
         print("\n" .. string.rep("=", 60))
         print("🌋 QUEST 18 - INFINITE FARMING MODE")
-        print("   ⚠️ Will NOT check Quest 1-17 anymore")
         print(string.rep("=", 60))
         
         local loopCount = 0
@@ -863,12 +799,12 @@ local function runQuestLoop()
             loopCount = loopCount + 1
             print(string.format("\n🔄 Quest 18 Loop #%d", loopCount))
             
-            -- รัน Quest 18
+            -- Run Quest 18
             local success = loadQuest(18)
             
             if success then
-                -- รอให้ Quest 18 เสร็จ (ถ้าเสร็จได้)
-                local timeout = 300  -- 5 นาที
+                -- Wait for Quest 18 to complete (if it completes)
+                local timeout = 300  -- 5 minutes
                 local startTime = tick()
                 
                 while not isQuestComplete(18) and (tick() - startTime) < timeout do
@@ -876,7 +812,7 @@ local function runQuestLoop()
                 end
             end
             
-            -- รอก่อน loop ใหม่
+            -- Wait before loop again
             task.wait(5)
         end
     else
@@ -886,10 +822,10 @@ local function runQuestLoop()
     end
 end
 
-----------------------------------------------------------------
--- 🚀 START
-----------------------------------------------------------------
--- Wait for UI to load
+-----------------------------------------------------------------
+--- 🚀 START
+-----------------------------------------------------------------
+--- Wait for UI to load
 print("\n⏳ Waiting for Quest UI to load...")
 local uiReady = false
 for i = 1, 5 do
@@ -906,5 +842,5 @@ if not uiReady then
     warn("⚠️ Quest UI not detected, starting anyway...")
 end
 
--- Start quest loop
+--- Start quest loop
 runQuestLoop()

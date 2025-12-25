@@ -4,6 +4,7 @@ local Shared = _G.Shared
 -- ✅ Checks if player is on Island1
 -- ✅ Try to Buy Arcane Pickaxe (Open Door -> Buy)
 -- ✅ If on Island1 -> Teleport to Forgotten Kingdom (Island2)
+-- 🔥 V2: Fixed Reserved Server Filter + Retry System
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,6 +28,7 @@ local QUEST_CONFIG = {
     ISLAND2_PLACE_ID = 129009554587176,  -- Forgotten Kingdom PlaceID
     MAX_PLAYERS_PREFERRED = 3,            -- Prefer servers with <= 3 players
     SERVER_HOP_ENABLED = true,           -- Enable server hop to low-player server
+    MAX_RETRIES = 3,                     -- Max retry attempts if server hop fails
 }
 
 -- 💜 ARCANE PICKAXE CONFIG
@@ -111,16 +113,14 @@ end
 -- GOLD & PICKAXE HELPERS (for Arcane Purchase)
 ----------------------------------------------------------------
 local function getGold()
-    -- Wait for playerGui
     local gui = player:WaitForChild("PlayerGui", 5)
     if not gui then 
         print("   [DEBUG] PlayerGui not found!")
         return 0 
     end
 
-    -- Use same path as Quest19: playerGui.Main.Screen.Hud.Gold
     local goldLabel = nil
-    for i = 1, 10 do  -- Retry up to 10 times
+    for i = 1, 10 do
         goldLabel = gui:FindFirstChild("Main")
                     and gui.Main:FindFirstChild("Screen")
                     and gui.Main.Screen:FindFirstChild("Hud")
@@ -206,7 +206,6 @@ local function smoothMoveTo(targetPos, onComplete)
         return 
     end
 
-    -- Cleanup previous
     if moveConn then moveConn:Disconnect() moveConn = nil end
     if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
     if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
@@ -214,13 +213,11 @@ local function smoothMoveTo(targetPos, onComplete)
 
     enableNoclip()
 
-    -- Create BodyVelocity
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
     bv.Parent = hrp
     bodyVelocity = bv
 
-    -- Create BodyGyro
     local bg = Instance.new("BodyGyro")
     bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
     bg.P = 10000
@@ -231,7 +228,7 @@ local function smoothMoveTo(targetPos, onComplete)
     print(string.format("   🚀 Moving to (%.1f, %.1f, %.1f)...", targetPos.X, targetPos.Y, targetPos.Z))
 
     local reachedTarget = false
-    local phase = 1 -- 1 = Y-axis first, 2 = XZ-axis
+    local phase = 1
 
     moveConn = RunService.Heartbeat:Connect(function()
         if reachedTarget then return end
@@ -239,13 +236,11 @@ local function smoothMoveTo(targetPos, onComplete)
         char = player.Character 
         hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-        -- Check if character or BodyVelocity is destroyed
         if not char or not char.Parent or not hrp or not hrp.Parent then
             if moveConn then moveConn:Disconnect() moveConn = nil end
             return
         end
 
-        -- Recreate BodyVelocity if destroyed
         if not bv or not bv.Parent then
             bv = Instance.new("BodyVelocity")
             bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
@@ -253,7 +248,6 @@ local function smoothMoveTo(targetPos, onComplete)
             bodyVelocity = bv
         end
 
-        -- Recreate BodyGyro if destroyed
         if not bg or not bg.Parent then
             bg = Instance.new("BodyGyro")
             bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
@@ -266,12 +260,10 @@ local function smoothMoveTo(targetPos, onComplete)
         local currentPos = hrp.Position
 
         if phase == 1 then
-            -- Phase 1: Move Y first (vertical)
             local yDiff = math.abs(targetPos.Y - currentPos.Y)
             
             if yDiff < Y_THRESHOLD then
                 phase = 2
-                -- print("   ✅ Y-axis reached, moving to XZ...")
             else
                 local yDirection = Vector3.new(0, targetPos.Y - currentPos.Y, 0)
                 local speed = math.min(MOVE_SPEED, yDiff * 10)
@@ -279,7 +271,6 @@ local function smoothMoveTo(targetPos, onComplete)
                 bg.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
             end
         else
-            -- Phase 2: Move XZ (horizontal) and fine-tune Y
             local direction = (targetPos - currentPos)
             local distance = direction.Magnitude
 
@@ -375,7 +366,7 @@ local function teleportToIsland(islandName)
 end
 
 ----------------------------------------------------------------
--- 🌐 SERVER HOP TO ISLAND2 (Low Player Server)
+-- 🌐 SERVER HOP TO ISLAND2 (Low Player Server) - FIXED
 ----------------------------------------------------------------
 local TeleportService = game:GetService("TeleportService")
 local HttpService = game:GetService("HttpService")
@@ -402,24 +393,76 @@ local function getBestServer(placeId, maxPlayers)
         return nil
     end
     
-    -- Find server with lowest player count
-    local bestServer = nil
-    local lowestPlayers = math.huge
+    local validServers = {}
+    
+    print(string.format("   🔍 Scanning %d servers...", #data.data))
     
     for _, server in ipairs(data.data) do
-        if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
-            -- Prefer servers with <= maxPlayers
-            if server.playing <= maxPlayers then
-                lowestPlayers = server.playing
-                bestServer = server
-            elseif not bestServer then
-                lowestPlayers = server.playing
-                bestServer = server
+        -- ✅ กรองเงื่อนไขพื้นฐาน
+        if server.id and 
+           server.playing and 
+           server.maxPlayers and
+           server.playing < server.maxPlayers then
+            
+            -- ✅ กรอง Reserved/VIP Server
+            local isReserved = false
+            
+            -- 1. เช็คว่ามี privateServerId หรือ reservedServerId
+            if server.privateServerId or server.reservedServerId then
+                isReserved = true
+                print(string.format("   ⚠️ Skipped Reserved: %s", tostring(server.id)))
+            end
+            
+            -- 2. Server ID ต้องเป็น UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+            if not isReserved then
+                local serverId = tostring(server.id)
+                if not string.match(serverId, "^%x+%-%x+%-%x+%-%x+%-%x+$") then
+                    isReserved = true
+                    print(string.format("   ⚠️ Skipped Non-UUID: %s", serverId))
+                end
+            end
+            
+            -- 3. เช็คว่ามี ping field (Public Server มีเสมอ)
+            if not isReserved and not server.ping then
+                isReserved = true
+                print(string.format("   ⚠️ Skipped No-Ping: %s", tostring(server.id)))
+            end
+            
+            -- ✅ เก็บเฉพาะ Public Server
+            if not isReserved then
+                table.insert(validServers, server)
+                print(string.format("   ✅ Valid Server: %d/%d players (ID: %s)", 
+                    server.playing, server.maxPlayers, tostring(server.id)))
             end
         end
     end
     
-    return bestServer
+    -- หา Server ที่มีคนน้อยที่สุด
+    if #validServers == 0 then
+        warn("   ❌ No valid public servers found")
+        return nil
+    end
+    
+    print(string.format("   ✅ Found %d valid public servers", #validServers))
+    
+    -- เรียงตามจำนวนผู้เล่น (น้อย → มาก)
+    table.sort(validServers, function(a, b)
+        return a.playing < b.playing
+    end)
+    
+    -- เลือก Server ที่มีคนน้อยที่สุด (แต่ไม่เกิน maxPlayers)
+    for _, server in ipairs(validServers) do
+        if server.playing <= maxPlayers then
+            print(string.format("   🎯 Selected low-player server: %d/%d players", 
+                server.playing, server.maxPlayers))
+            return server
+        end
+    end
+    
+    -- ถ้าไม่มี Server ที่มีคน <= maxPlayers ให้เอาอันที่น้อยที่สุด
+    print(string.format("   ⚠️ No server with <= %d players, using lowest: %d/%d", 
+        maxPlayers, validServers[1].playing, validServers[1].maxPlayers))
+    return validServers[1]
 end
 
 local function serverHopToIsland2()
@@ -430,101 +473,149 @@ local function serverHopToIsland2()
     
     local placeId = QUEST_CONFIG.ISLAND2_PLACE_ID
     local maxPlayers = QUEST_CONFIG.MAX_PLAYERS_PREFERRED
+    local maxRetries = QUEST_CONFIG.MAX_RETRIES
     
     print("\n" .. string.rep("=", 50))
     print("🌐 SERVER HOP: Finding low-player server for Island2...")
     print(string.rep("=", 50))
     
-    local bestServer = getBestServer(placeId, maxPlayers)
+    -- ✅ Retry System
+    local attempt = 1
     
-    if not bestServer then
-        warn("   ❌ No suitable server found, using normal teleport")
-        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
-    end
-    
-    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
-    print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
-    
-    -- Queue Haze Loader anti-teleport script
-    if queue_on_teleport then
-        local queueScript = [[
-            -- HAZE LOADER TELEPORT STOPPER
-            local ui = Instance.new("ScreenGui")
-            ui.Name = "TeleportStopper"
-            ui.ResetOnSpawn = false
-            local frame = Instance.new("Frame")
-            frame.Size = UDim2.new(0, 300, 0, 100)
-            frame.Position = UDim2.new(0.5, -150, 0.5, -50)
-            frame.BackgroundColor3 = Color3.new(0, 0, 0)
-            frame.BackgroundTransparency = 0.5
-            frame.Parent = ui
-            local text = Instance.new("TextLabel")
-            text.Size = UDim2.new(1, 0, 1, 0)
-            text.BackgroundTransparency = 1
-            text.TextColor3 = Color3.new(1, 1, 1)
-            text.Text = "Stopping Teleport..."
-            text.Parent = frame
-            ui.Parent = gethui and gethui() or game:GetService("Players").PlayerGui
-            task.spawn(function()
-                task.wait(5)
-                pcall(function() ui:Destroy() end)
+    while attempt <= maxRetries do
+        print(string.format("\n🔍 Attempt %d/%d: Searching for server...", attempt, maxRetries))
+        
+        local bestServer = getBestServer(placeId, maxPlayers)
+        
+        if not bestServer then
+            warn(string.format("   ❌ No suitable server found on attempt %d", attempt))
+            
+            if attempt >= maxRetries then
+                warn("   ❌ Max retries reached, using normal teleport")
+                return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+            end
+            
+            attempt = attempt + 1
+            print("   ⏳ Waiting 3 seconds before retry...")
+            task.wait(3)
+        else
+            print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+            print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
+            
+            -- Queue Haze Loader anti-teleport script
+            if queue_on_teleport then
+                local queueScript = [[
+                    -- HAZE LOADER TELEPORT STOPPER (V35 Hub Method)
+                    print("⚡ [V35] Haze Loader Anti-Teleport Starting...")
+                    
+                    local ui = Instance.new("ScreenGui")
+                    ui.Name = "TeleportStopper"
+                    ui.ResetOnSpawn = false
+                    local frame = Instance.new("Frame")
+                    frame.Size = UDim2.new(0, 300, 0, 100)
+                    frame.Position = UDim2.new(0.5, -150, 0.5, -50)
+                    frame.BackgroundColor3 = Color3.new(0, 0, 0)
+                    frame.BackgroundTransparency = 0.5
+                    frame.Parent = ui
+                    local text = Instance.new("TextLabel")
+                    text.Size = UDim2.new(1, 0, 1, 0)
+                    text.BackgroundTransparency = 1
+                    text.TextColor3 = Color3.new(1, 1, 1)
+                    text.Text = "🛡️ Haze Loader\nStopping Teleport..."
+                    text.TextSize = 16
+                    text.Font = Enum.Font.GothamBold
+                    text.Parent = frame
+                    ui.Parent = game:GetService("CoreGui")
+                    
+                    task.spawn(function()
+                        task.wait(5)
+                        pcall(function() ui:Destroy() end)
+                    end)
+                    
+                    local stoppedTp = false
+                    while not stoppedTp do
+                        local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                        pcall(function() tpService:SetTeleportGui(tpService) end)
+                        
+                        local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                        pcall(function()
+                            for i, v in logService:GetLogHistory() do
+                                if v.message:find("cannot be cloned") then
+                                    stoppedTp = true
+                                    warn("✅ [V35] Teleport STOPPED!")
+                                    break
+                                end
+                            end
+                        end)
+                        
+                        task.wait()
+                        pcall(function() tpService:TeleportCancel() end)
+                        pcall(function() tpService:SetTeleportGui(nil) end)
+                    end
+                    
+                    pcall(function() ui:Destroy() end)
+                    warn("🎉 [V35] Anti-teleport completed!")
+                ]]
+                
+                queue_on_teleport(queueScript)
+                print("   📜 Queued Haze Loader anti-teleport script")
+            else
+                warn("   ⚠️ queue_on_teleport not available!")
+            end
+            
+            -- Teleport to the low-player server
+            print(string.format("   🚀 Teleporting to Island2 (Attempt %d)...", attempt))
+            
+            local success, err = pcall(function()
+                TeleportService:TeleportToPlaceInstance(placeId, bestServer.id)
             end)
             
-            local stoppedTp = false
-            while not stoppedTp do
-                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
-                pcall(function() tpService:SetTeleportGui(tpService) end)
+            if success then
+                print("   ✅ Teleport initiated!")
+                return true
+            else
+                local errorMsg = tostring(err)
+                warn("   ❌ Teleport failed: " .. errorMsg)
                 
-                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
-                pcall(function()
-                    for i, v in logService:GetLogHistory() do
-                        if v.message:find("cannot be cloned") then
-                            stoppedTp = true
-                            warn("✅ Teleport STOPPED!")
-                            break
-                        end
+                -- ถ้าเจอ "Unauthorized" หรือ "Game 312" → ลองใหม่
+                if string.find(errorMsg:lower(), "unauthorized") or 
+                   string.find(errorMsg:lower(), "game 312") or
+                   string.find(errorMsg:lower(), "unable to join") then
+                    warn("   ⚠️ Reserved server or join error detected, retrying...")
+                    
+                    if attempt >= maxRetries then
+                        warn("   ❌ Max retries reached, using normal teleport")
+                        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
                     end
-                end)
-                
-                task.wait()
-                pcall(function() tpService:TeleportCancel() end)
-                pcall(function() tpService:SetTeleportGui(nil) end)
+                    
+                    attempt = attempt + 1
+                    print("   ⏳ Waiting 3 seconds before retry...")
+                    task.wait(3)
+                else
+                    -- Error อื่นๆ → ใช้ Teleport ปกติ
+                    warn("   ❌ Unknown error, using normal teleport")
+                    return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
+                end
             end
-            pcall(function() ui:Destroy() end)
-            warn("🎉 Anti-teleport completed!")
-        ]]
-        
-        queue_on_teleport(queueScript)
-        print("   📜 Queued anti-teleport script")
+        end
     end
     
-    -- Teleport to the low-player server
-    print(string.format("   🚀 Teleporting to Island2 (PlaceID: %d)...", placeId))
-    
-    local success, err = pcall(function()
-        TeleportService:TeleportToPlaceInstance(placeId, bestServer.id)
-    end)
-    
-    if success then
-        print("   ✅ Teleport initiated!")
-        return true
-    else
-        warn("   ❌ Teleport failed: " .. tostring(err))
-        -- Fallback to normal teleport
-        return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
-    end
+    -- ถ้าลองครบแล้วไม่ได้ → Fallback
+    warn("   ❌ All retry attempts failed, using normal teleport")
+    return teleportToIsland(QUEST_CONFIG.ISLAND_NAME)
 end
+
+----------------------------------------------------------------
+-- ARCANE PICKAXE PURCHASE
 ----------------------------------------------------------------
 local function buyArcanePickaxe()
     if not ARCANE_CONFIG.ENABLED then return false end
     
-    -- Check if already have Arcane
     if hasPickaxe(ARCANE_CONFIG.TARGET_PICKAXE) then
         print("   💜 Already have Arcane Pickaxe!")
         return true
     end
     
-    -- Check Gold
     local gold = getGold()
     print(string.format("   💰 Current Gold: %d (Need: %d)", gold, ARCANE_CONFIG.MIN_GOLD))
     
@@ -537,7 +628,6 @@ local function buyArcanePickaxe()
     print("💜 ARCANE PICKAXE: Starting purchase...")
     print(string.rep("=", 50))
     
-    -- 🚪 STEP 1: Move to door and open it
     print(string.format("   🚪 Moving to door (%.1f, %.1f, %.1f)...", 
         ARCANE_CONFIG.DOOR_POSITION.X, ARCANE_CONFIG.DOOR_POSITION.Y, ARCANE_CONFIG.DOOR_POSITION.Z))
     
@@ -561,7 +651,6 @@ local function buyArcanePickaxe()
     print("   ⏳ Waiting 3 seconds before opening door...")
     task.wait(3)
     
-    -- Open the door
     print("   🚪 Opening FallenAngelCaveDoor...")
     pcall(function()
         local doorArgs = {Workspace:WaitForChild("Proximity"):WaitForChild("FallenAngelCaveDoor")}
@@ -571,7 +660,6 @@ local function buyArcanePickaxe()
     print("   ✅ Door opened!")
     task.wait(1)
     
-    -- 🛒 STEP 2: Move to shop
     print(string.format("   🚀 Moving to shop (%.1f, %.1f, %.1f)...", 
         ARCANE_CONFIG.BUY_POSITION.X, ARCANE_CONFIG.BUY_POSITION.Y, ARCANE_CONFIG.BUY_POSITION.Z))
     
@@ -595,7 +683,6 @@ local function buyArcanePickaxe()
     print("   ⏳ Waiting 3 seconds...")
     task.wait(3)
     
-    -- Purchase
     print("   🛒 Purchasing Arcane Pickaxe...")
     local args = {ARCANE_CONFIG.TARGET_PICKAXE, 1}
     pcall(function()
@@ -604,7 +691,6 @@ local function buyArcanePickaxe()
     
     task.wait(1)
     
-    -- Verify
     if hasPickaxe(ARCANE_CONFIG.TARGET_PICKAXE) then
         print("   ✅ Arcane Pickaxe purchased successfully!")
         return true
@@ -622,7 +708,6 @@ print("🚀 QUEST 18: " .. QUEST_CONFIG.QUEST_NAME)
 print("🎯 Objective: Buy Arcane + Teleport to Forgotten Kingdom")
 print(string.rep("=", 50))
 
--- Check Level
 print("\n🔍 Pre-check: Verifying level requirement...")
 if not hasRequiredLevel() then
     print("\n❌ Level requirement not met!")
@@ -630,11 +715,9 @@ if not hasRequiredLevel() then
     return
 end
 
--- 💜 STEP 1: Try to buy Arcane Pickaxe first
 print("\n🔍 Step 1: Checking Arcane Pickaxe...")
 buyArcanePickaxe()
 
--- 🌀 STEP 2: Teleport to Island2
 print("\n🔍 Step 2: Checking Location...")
 if needsTeleport() then
     print("   ⚠️ Not on target island!")
