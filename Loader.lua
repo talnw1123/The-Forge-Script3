@@ -544,6 +544,9 @@ local function runQuestLoop()
                         
                         print("   🚀 Teleporting...")
                         
+                        -- ✅ Allow our own teleport
+                        _G.AllowOwnTeleport = true
+                        
                         local success, err = pcall(function()
                             TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                         end)
@@ -598,11 +601,20 @@ local function runQuestLoop()
                         if bestServer then
                             print(string.format("   ✅ Found: %d/%d players", bestServer.playing, bestServer.maxPlayers))
                             
-                            pcall(function()
+                            -- ✅ Allow our own teleport
+                            _G.AllowOwnTeleport = true
+                            
+                            local success = pcall(function()
                                 TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                             end)
                             
-                            while true do task.wait(1) end
+                            if success then
+                                print("   🚀 Teleport initiated!")
+                                while true do task.wait(1) end
+                            else
+                                _G.AllowOwnTeleport = false
+                                print("   ❌ Teleport failed")
+                            end
                         end
                     end
                 end
@@ -615,6 +627,12 @@ local function runQuestLoop()
         task.spawn(function()
             local stoppedTp = false
             while not stoppedTp do
+                -- ⚠️ Skip if we're doing our own teleport
+                if _G.AllowOwnTeleport then
+                    task.wait(1)
+                    continue
+                end
+                
                 local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
                 pcall(function() tpService:SetTeleportGui(tpService) end)
                 
@@ -646,6 +664,11 @@ local function runQuestLoop()
             local oldhmmnc
             oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
                 local method = getnamecallmethod()
+                
+                -- ⚠️ Skip blocking if we're doing our own teleport
+                if _G.AllowOwnTeleport then
+                    return oldhmmnc(self, ...)
+                end
                 
                 if blockingEnabled and self == TeleportService then
                     if method ~= "TeleportCancel" then
