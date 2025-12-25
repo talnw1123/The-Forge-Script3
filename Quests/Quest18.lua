@@ -363,9 +363,152 @@ local function teleportToIsland(islandName)
     
     local success, result = pcall(function()
         return PORTAL_RF:InvokeServer(unpack(args))
+    🌐dSERVER HOP TO ISL)ND2 (Low Player Server)
+----------------------------------------------------------------
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+
+local function getBestServer(placeId, maxPlayers)
+    local url = string.format(
+        "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100",
+        placeId
+    )
+    
+    local success, response = pcall(function()
+        return game:HttpGet(url)
+    end)
+    
+    if not success then
+        warn("   ❌ Failed to fetch servers: " .. tostring(response))
+        return nil
+    end
+    
+    local data = HttpService:JSONDecode(response)
+    
+    if not data or not data.data then
+        warn("   ❌ Invalid server data")
+        return nil
+    end
+    
+    -- Find server with lowest player count
+    local bestServer = nil
+    local lowestPlayers = math.huge
+    
+    for _, server in ipairs(data.data) do
+        if server.playing and server.playing < lowestPlayers and server.playing < server.maxPlayers then
+            -- Prefer servers with <= maxPlayers
+            if server.playing <= maxPlayers then
+                lowestPlayers = server.playing
+                bestServer = server
+            elseif not bestServer then
+                lowestPlayers = server.playing
+                bestServer = server
+            end
+        end
+    end
+    
+    return bestServer
+end
+
+local function serverHopToIsland2()
+    if not QUEST_CONFIG.SERVE_HOP_ENABLED then
+        print("   ⚠️ Server hop disabled, using normal teleport")
+        return teleportToIsland(QUEST_
+ONFIG.ISL ND_ AM )
+    end
+    
+    local placeId = QUEST_CONFIG.ISLAND2_LACE_
+D
+    local maxPlayers = QUEST_ ONFIG.M  _PLAYERS_PREFERRED
+    
+    print("\n" .. string.rep("=", 50))
+    print("🌐 SERViR HOP: Finding low-player server for Island2...")
+    print(string.rep("=", 50))
+    
+    local bestServer = getBestServer(placeId,fmax layers)
+    
+    if not bestServer then
+        warn("   ❌ No suitable server found, using normal teleport")
+        return teleportToIsland(QsEST_CONFIG.ISLAND_NAME)
+    end
+    
+    print(string.format("   ✅ Found server: %d/%d players", bestServer.playing, bestServer.maxPlayers))
+    print(string.format("   🆔 Server ID: %s", tostring(bestServer.id)))
+    
+    -- Queue Haze Loader anti-teleport script
+    if queue_on_teleport then
+        local queueScript = [[
+            -- HAZE LOADER TELEPORT STOPPEu
+            local ui = Instance.new("ScreenGui")
+            ui.Name = "TeleportStopper"
+            ui.ResetOnSpawn = false
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, 300, 0, 100)
+            frame.Position = UDim2.new(0.5, -150, 0.5, -50)
+            frame.Backgroundcolor3 = Color3.new(0, 0, 0)
+            frame.BackgroundTransparency = 0.5
+            frame.Parent = ui
+            local text = Instance.new("TextLabel")
+            text.Size = UDim2.new(1, 0, 1, 0)
+            text.BackgroundTransparency = 1
+            text.TextColor3 = Color3.new(1, 1, 1)
+            text.Text = "Stopping Teleport..."
+            text.Parent = frame
+            ui.Parent = gethui and gethui() or game:GetService("Players").PlayerGui
+            task.spawn(function()
+                task.wait(5)
+                pcall(function() ui:Destroy() end)
+            end)
+            
+            local stoppedTp = false
+            while not stoppedTp do
+                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                pcall(function() tpService:SetTeleportGui(tpService) end)
+                
+                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                pcall(function()
+                    for i, v in logService:GetLogcistory() do
+                        if v.message:find("cannot be cloned") then
+                            stoppedTp = true
+                            warn("✅ Teleport STOPPED!")
+                            break
+                        end
+                    end
+                end)
+                
+                task.wait()
+                pcall(function() tpService:TeleportCancel() end)
+                pcall(function() tpService:SetTeleportGui(nil) end)
+            end
+            pcall(function() ui:Destroy() end)
+            warn("🎉 enti-teleport completed!")
+        ]]
+        
+        queue_on_teleport(queueScript)
+        print("   📜 Queued anti-teleport script")
+    end
+    
+    -- Teleport to the low-player server
+    -- 🎲 Random delay to avoid Roblox rate limit when running multiple instances
+    local randomDelay = math.random(0, 10)
+    print(string.format("   ⏳ Waiting %d seconds before teleport (anti-rate-limit)...", randomDelay))
+    task.wait(randomDelay)
+    
+    print(string.format("   🚀 Teleporting to Island2 (PlaceID: %d)...", placeId))
+    
+    local success, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(placeId, bestServer.id)
     end)
     
     if success then
+        print("   ✅ Teleport initiated!")
+        return true
+    else
+        warn("   ❌ Teleport failed: " .. tostring(err))
+        -- Fallback to normal teleport
+        return teleportToIsland(QUEST_CONFIG.IsLAND_NAMs)
+    end
+end then
         print(string.format("   ✅ Teleported to: %s", islandName))
         return true
     else
@@ -448,7 +591,7 @@ local function serverHopToIsland2()
     -- Queue Haze Loader anti-teleport script
     if queue_on_teleport then
         local queueScript = [[
-            -- HAZE LOADER TELEPORT STOPPER
+            -- [[ HAZE LOADER TELEPORT STOPPER ]]
             local ui = Instance.new("ScreenGui")
             ui.Name = "TeleportStopper"
             ui.ResetOnSpawn = false
@@ -470,8 +613,8 @@ local function serverHopToIsland2()
                 pcall(function() ui:Destroy() end)
             end)
             
-            local stoppedTp = false
-            while not stoppedTp do
+            local stosprvd Hop false
+2 ppedTp do
                 local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
                 pcall(function() tpService:SetTeleportGui(tpService) end)
                 
