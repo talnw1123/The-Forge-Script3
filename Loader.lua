@@ -544,9 +544,6 @@ local function runQuestLoop()
                         
                         print("   🚀 Teleporting...")
                         
-                        -- ✅ Allow our own teleport
-                        _G.AllowOwnTeleport = true
-                        
                         local success, err = pcall(function()
                             TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                         end)
@@ -601,19 +598,22 @@ local function runQuestLoop()
                         if bestServer then
                             print(string.format("   ✅ Found: %d/%d players", bestServer.playing, bestServer.maxPlayers))
                             
-                            -- ✅ Allow our own teleport
-                            _G.AllowOwnTeleport = true
+                            -- 🎲 Random delay to avoid rate limit
+                            local randomDelay = math.random(0, AUTO_HOP_CONFIG.RANDOM_DELAY_MAX)
+                            print(string.format("   ⏳ Waiting %d seconds...", randomDelay))
+                            task.wait(randomDelay)
                             
-                            local success = pcall(function()
+                            print("   🚀 Teleporting...")
+                            
+                            local success, err = pcall(function()
                                 TeleportService:TeleportToPlaceInstance(AUTO_HOP_CONFIG.ISLAND2_PLACE_ID, bestServer.id)
                             end)
                             
                             if success then
-                                print("   🚀 Teleport initiated!")
+                                print("   ✅ Teleport initiated!")
                                 while true do task.wait(1) end
                             else
-                                _G.AllowOwnTeleport = false
-                                print("   ❌ Teleport failed")
+                                warn("   ❌ Teleport error: " .. tostring(err))
                             end
                         end
                     end
@@ -621,63 +621,39 @@ local function runQuestLoop()
             end)
         end
         
-        -- 🛡️ ANTI-TELEPORT PROTECTION
-        print("🛡️ Setting up Anti-Teleport protection...")
-        
-        task.spawn(function()
-            local stoppedTp = false
-            while not stoppedTp do
-                -- ⚠️ Skip if we're doing our own teleport
-                if _G.AllowOwnTeleport then
-                    task.wait(1)
-                    continue
-                end
+        -- 🛡️ ANTI-TELEPORT: Queue script for NEXT server (using queue_on_teleport only)
+        if queue_on_teleport then
+            local queueScript = [[
+                -- [[ THE KEY TRICK: Break teleport by setting invalid TeleportGui ]]
+                print("🛡️ [V35] Haze Loader Anti-Teleport Starting...")
                 
-                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
-                pcall(function() tpService:SetTeleportGui(tpService) end)
-                
-                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
-                pcall(function()
-                    for i, v in logService:GetLogHistory() do
-                        if v.message:find("cannot be cloned") then
-                            stoppedTp = true
-                            break
+                local stoppedTp = false
+                while not stoppedTp do
+                    local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                    pcall(function() tpService:SetTeleportGui(tpService) end)
+                    
+                    local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                    pcall(function()
+                        for i, v in logService:GetLogHistory() do
+                            if v.message:find("cannot be cloned") then
+                                stoppedTp = true
+                                warn("✅ [V35] Teleport STOPPED!")
+                                break
+                            end
                         end
-                    end
-                end)
-                
-                task.wait()
-                pcall(function() tpService:TeleportCancel() end)
-                pcall(function() tpService:SetTeleportGui(nil) end)
-            end
-        end)
-        
-        if hookmetamethod then
-            local TeleportService = game:GetService("TeleportService")
-            local blockingEnabled = true
-            
-            task.spawn(function()
-                task.wait(10)
-                blockingEnabled = false
-            end)
-            
-            local oldhmmnc
-            oldhmmnc = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                local method = getnamecallmethod()
-                
-                -- ⚠️ Skip blocking if we're doing our own teleport
-                if _G.AllowOwnTeleport then
-                    return oldhmmnc(self, ...)
+                    end)
+                    
+                    task.wait()
+                    pcall(function() tpService:TeleportCancel() end)
+                    pcall(function() tpService:SetTeleportGui(nil) end)
                 end
-                
-                if blockingEnabled and self == TeleportService then
-                    if method ~= "TeleportCancel" then
-                        return nil
-                    end
-                end
-                
-                return oldhmmnc(self, ...)
-            end))
+                warn("🎉 [V35] Anti-teleport completed!")
+            ]]
+            
+            queue_on_teleport(queueScript)
+            print("📜 Queued anti-teleport script for next server")
+        else
+            warn("⚠️ queue_on_teleport not available!")
         end
         
         -- 🌋 START QUEST 19
