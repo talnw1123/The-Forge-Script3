@@ -405,12 +405,14 @@ local function runQuestLoop()
         -- ============================================
         
         -- 🌐 AUTO SERVER HOP CONFIG
+        -- 🎲 Random delay added to avoid Roblox rate limit with multiple instances
         local AUTO_HOP_CONFIG = {
             ENABLED = true,
             MAX_PLAYERS = 4,                    -- Server hop if players > 4
             ISLAND2_PLACE_ID = 129009554587176, -- Forgotten Kingdom PlaceID
             MAX_PLAYERS_PREFERRED = 3,          -- Prefer servers with <= 3 players
             CHECK_INTERVAL = 10,                -- Check every 10 seconds
+            RANDOM_DELAY_MAX = 15,              -- Max random delay (0-15 seconds)
         }
         
         -- 🌐 CHECK PLAYER COUNT AND SERVER HOP IF NEEDED
@@ -510,6 +512,11 @@ local function runQuestLoop()
                     end
                     
                     -- Teleport!
+                    -- 🎲 Random delay to avoid Roblox rate limit with multiple instances
+                    local randomDelay = math.random(0, AUTO_HOP_CONFIG.RANDOM_DELAY_MAX)
+                    print(string.format("   ⏳ Waiting %d seconds before teleport (anti-rate-limit)...", randomDelay))
+                    task.wait(randomDelay)
+                    
                     print(string.format("   🚀 Teleporting to low-player server..."))
                     print(string.format("   🆔 Trying server with %d players...", bestServer.playing))
                     
