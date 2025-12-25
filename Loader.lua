@@ -624,7 +624,7 @@ local function runQuestLoop()
         -- 🛡️ ANTI-TELEPORT: Queue script for NEXT server (using queue_on_teleport only)
         if queue_on_teleport then
             local queueScript = [[
-                -- [[ THE KEY TRICK: Break teleport by setting invalid TeleportGui ]]
+                -- [[ THE KEY TRICK: Break teleport by setting invalid TeleportGui
                 print("🛡️ [V35] Haze Loader Anti-Teleport Starting...")
                 
                 local stoppedTp = false
