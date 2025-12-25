@@ -405,14 +405,14 @@ local function runQuestLoop()
         -- ============================================
         
         -- 🌐 AUTO SERVER HOP CONFIG
-        -- ⚠️ DISABLED: Game blocks TeleportService (Error 773)
-        -- Use Quest18 from Island1 for server hopping instead
+        -- 🎲 Random delay added to avoid Roblox rate limit with multiple instances
         local AUTO_HOP_CONFIG = {
-            ENABLED = false,  -- Disabled due to game teleport restriction
+            ENABLED = true,  -- Enabled: hop to low-player Island2 server
             MAX_PLAYERS = 4,                    -- Server hop if players > 4
             ISLAND2_PLACE_ID = 129009554587176, -- Forgotten Kingdom PlaceID
             MAX_PLAYERS_PREFERRED = 3,          -- Prefer servers with <= 3 players
             CHECK_INTERVAL = 10,                -- Check every 10 seconds
+            RANDOM_DELAY_MAX = 15,              -- Max random delay (0-15 seconds)
         }
         
         -- 🌐 CHECK PLAYER COUNT AND SERVER HOP IF NEEDED
@@ -512,6 +512,11 @@ local function runQuestLoop()
                     end
                     
                     -- Teleport!
+                    -- 🎲 Random delay to avoid Roblox rate limit with multiple instances
+                    local randomDelay = math.random(0, AUTO_HOP_CONFIG.RANDOM_DELAY_MAX)
+                    print(string.format("   ⏳ Waiting %d seconds before teleport (anti-rate-limit)...", randomDelay))
+                    task.wait(randomDelay)
+                    
                     print(string.format("   🚀 Teleporting to low-player server..."))
                     print(string.format("   🆔 Trying server with %d players...", bestServer.playing))
                     
@@ -615,6 +620,33 @@ local function runQuestLoop()
                 end
             end)
         end
+        
+        -- 🛡️ ANTI-TELEPORT: Prevent being sent back to Island1
+        print("🛡️ Setting up Anti-Teleport protection...")
+        task.spawn(function()
+            local stoppedTp = false
+            local attempts = 0
+            while not stoppedTp and attempts < 100 do
+                attempts = attempts + 1
+                local tpService = cloneref and cloneref(game:GetService("TeleportService")) or game:GetService("TeleportService")
+                pcall(function() tpService:SetTeleportGui(tpService) end)
+                
+                local logService = cloneref and cloneref(game:GetService("LogService")) or game:GetService("LogService")
+                pcall(function()
+                    for i, v in logService:GetLogHistory() do
+                        if v.message:find("cannot be cloned") then
+                            stoppedTp = true
+                            break
+                        end
+                    end
+                end)
+                
+                task.wait(0.1)
+                pcall(function() tpService:TeleportCancel() end)
+                pcall(function() tpService:SetTeleportGui(nil) end)
+            end
+            print("✅ Anti-Teleport protection active!")
+        end)
         
         -- 🌋 START QUEST 19
         print("\n" .. string.rep("=", 60))
